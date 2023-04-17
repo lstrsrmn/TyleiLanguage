@@ -1,0 +1,9 @@
+.stack-work/
+/*
+!src/
+!src/*
+!LICENCE
+!README.md
+!*.yaml
+!*.cabal
+!.gitignore
