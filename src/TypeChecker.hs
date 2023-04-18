@@ -5,6 +5,7 @@ import Syntax
 import Eval
 import Control.Monad.Except
 import qualified Data.Map as Map
+import Data.Void (vacuous)
 
 type Checker a = Except String a
 
@@ -50,7 +51,8 @@ checkType _ Nat = pure Nat
 checkType theta (Product a b) = do
   a <- checkType theta a
   b <- checkType theta b
-  pure (Product a b)
+  pure (Product
+        a b)
 checkType theta (ForAll a b) = do
   b <- checkType (typeBind theta a) b
   pure (ForAll a b)
@@ -97,14 +99,6 @@ infer ctx (RSnd t) = do
   case tType of
     VProduct _ b -> pure (Snd t, b)
     _ -> throwError "Snd projection must have Product type."
-infer ctx (RTypeApp t a) = do
-  (t, tType) <- infer ctx t
-  a <- checkType ctx a
-  case tType of
-    VForAll _ b -> do
-      let va = evalType (typeEnv ctx) a
-      pure (TypeApp t a, b va)
-    _ -> throwError "Type applcaiton head must have for all type."
 infer ctx (RFix f t bs) = do
   t <- checkType ctx t
   let vt = evalType (typeEnv ctx) t
@@ -150,7 +144,30 @@ check ctx (RPair t u) (VProduct a b) = do
   t <- check ctx t a
   u <- check ctx u b
   pure (Pair t u)
-
+check ctx (RAbs x t) (VFunction a b) = do
+  t <- check (bind ctx x a) t b
+  pure (Abs x t)
+check ctx (RTypeAbs x t) (VForAll _ b) = do
+  let va = VTVar (typeLevel ctx)
+  t <- check (typeBind ctx x) t (b va)
+  pure (TypeAbs x t)
+check ctx (RCons c t) indF@(VInd f bs) = do
+  case Map.fromList bs Map.!? c of
+    Just func -> do
+      t <- check ctx t (func indF)
+      pure (Cons c t)
+    _ -> throwError ("Constructor " ++ c ++ " is not a constructor of the inductive type/")
+check ctx (RLet x a t u) b = do
+  a <- checkType ctx a
+  let va = evalType (typeEnv ctx) a
+  t <- check ctx t va
+  u <- check (bind ctx x va) u b
+  pure (Let x a t u)
+check ctx (RLetType t c r) b = do
+  c <- checkType ctx c
+  let vc = evalType (typeEnv ctx) c
+  r <- check (typeDefine ctx t vc) r b
+  pure (LetType t c r)
 
 --check ctx t a = do
 --  (t, a') <- infer ctx t

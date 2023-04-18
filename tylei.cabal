@@ -26,7 +26,6 @@ source-repository head
 library
   exposed-modules:
       Eval
-      Lib
       Syntax
       TypeChecker
   other-modules:

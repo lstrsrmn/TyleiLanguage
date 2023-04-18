@@ -18,9 +18,9 @@ data Type v
 data Raw
   = RVar Name -- done
   | RStar -- done
-  | RAbs Name Raw -- 
+  | RAbs Name Raw -- Done
   | RApp Raw Raw -- Done
-  | RNum Int -- 
+  | RNum Int -- Done
   -- Iter (C, n, t0, ts)
   -- C -> Return type
   -- n -> number of iterations
@@ -33,12 +33,12 @@ data Raw
   | RSnd Raw -- Done
   | RTypeAbs Name Raw -- 
   | RTypeApp Raw (Type Name) -- Done
-  | RCons Name Raw
-  | RFix Name (Type Name) [(Name, Name, Raw)] -- fix {name} : {Type}
+  | RCons Name Raw -- Done
+  | RFix Name (Type Name) [(Name, Name, Raw)] -- Done
   | RBind Raw Raw
   | RReturn Raw
   | RLet Name (Type Name) Raw Raw -- let x : Type = e1 in e2
-  | RLetType Name (Type Name) Raw
+  | RLetType Name (Type Name) Raw -- let type x : Type in e
 
 newtype Ix = Ix Int
   deriving (Eq, Ord, Num, Show)
