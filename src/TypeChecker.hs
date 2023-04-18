@@ -5,7 +5,6 @@ import Syntax
 import Eval
 import Control.Monad.Except
 import qualified Data.Map as Map
-import Data.Void (vacuous)
 
 type Checker a = Except String a
 
@@ -59,6 +58,10 @@ checkType theta (ForAll a b) = do
 checkType theta (Ind t cs) = do
   cs <- mapM (\(c, b) -> (c,) <$> checkType (typeBind theta t) b) cs
   pure (Ind t cs)
+checkType theta (IO a) = do
+  a <- checkType theta a
+  pure (IO a)
+checkType _ CharT = pure CharT
 
 inferVar :: Context -> Name -> Checker (Ix, VType)
 inferVar (Context _ [] _ _) n = throwError ("Variable [" ++ n ++ "] not in scope")
@@ -75,7 +78,7 @@ infer ctx (RVar x) = do
   pure (Var x, a)
 infer _ RStar = pure (Star, VUnit)
 infer _ (RNum i) = pure (Num i, VNat)
-infer _ (RChar c) = pure (TChar c, VTChar)
+infer _ (RChar c) = pure (Char c, VCharT)
 infer ctx (RApp t u) = do
   (t, tType) <- infer ctx t
   case tType of
@@ -118,10 +121,22 @@ infer ctx (RFix f t bs) = do
         bs <- mapM (checkBranch (bind ctx f vt)) bs
         pure (Fix f t bs, vt)
     _ -> throwError "Inductive Function has wrong structure."
+infer ctx (RMatchChar a c cs) = do
+  a <- checkType ctx a
+  let va = evalType (typeEnv ctx) a
+  let
+    checkBranch :: (Maybe Char, Raw) -> Checker (Maybe Char, Term)
+    checkBranch (c, t) = do
+      t <- check ctx t va
+      pure (c, t)
+  c <- check ctx c VCharT
+  cs <- mapM checkBranch cs
+  pure (MatchChar a c cs, va)
 infer ctx (RBind x a t u) = do
   a <- checkType ctx a
-  t <- check ctx t a
-  (u, uType) <- infer (bind ctx x a) u
+  let va = evalType (typeEnv ctx) a
+  t <- check ctx t va
+  (u, uType) <- infer (bind ctx x va) u
   pure (Bind x a t u, uType)
 infer ctx (RLet x a t u) = do
   a <- checkType ctx a
@@ -139,7 +154,7 @@ infer ctx (RTypeApp t u) = do
   let vu = evalType (typeEnv ctx) u
   (t, tType) <- infer ctx t
   case tType of
-    VForAll a b -> do
+    VForAll _ b -> do
       pure (TypeApp t u, b vu)
     _ -> throwError "Application head must have function type"
 infer _ _ = throwError "Inference failed."
@@ -156,7 +171,7 @@ check ctx (RTypeAbs x t) (VForAll _ b) = do
   let va = VTVar (typeLevel ctx)
   t <- check (typeBind ctx x) t (b va)
   pure (TypeAbs x t)
-check ctx (RCons c t) indF@(VInd f bs) = do
+check ctx (RCons c t) indF@(VInd _ bs) = do
   case Map.fromList bs Map.!? c of
     Just func -> do
       t <- check ctx t (func indF)
@@ -165,8 +180,8 @@ check ctx (RCons c t) indF@(VInd f bs) = do
 check ctx (RBind x a t u) (VIO b) = do
   a <- checkType ctx a
   let va = evalType (typeEnv ctx) a
-  t <- check ctx t va
-  u <- check (bind ctx x va) u b
+  t <- check ctx t (VIO va)
+  u <- check (bind ctx x va) u (VIO b)
   pure (Bind x a t u)
 check ctx (RReturn t) (VIO a) = do
   t <- check ctx t a

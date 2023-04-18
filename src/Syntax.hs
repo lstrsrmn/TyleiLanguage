@@ -13,7 +13,7 @@ data Type v
   | ForAll Name (Type v)
   | Ind Name [(Name, Type v)]
   | IO (Type v)
-  | TVChar
+  | CharT
   deriving Show
 
 data Raw
@@ -23,6 +23,7 @@ data Raw
   | RApp Raw Raw -- Done
   | RNum Int -- Done
   | RChar Char
+  | RMatchChar (Type Name) Raw [(Maybe Char, Raw)]
   -- Iter (C, n, t0, ts)
   -- C -> Return type
   -- n -> number of iterations
@@ -52,7 +53,8 @@ data Term
   | Abs Name Term
   | App Term Term
   | Num Int
-  | TChar Char
+  | Char Char
+  | MatchChar (Type Ix) Term [(Maybe Char, Term)]
   -- Iter (C, n, t0, ts)
   -- C -> Return type
   -- n -> number of iterations
@@ -116,7 +118,7 @@ data VType
   | VForAll Name (VType -> VType)
   | VInd Name [(Name, VType -> VType)]
   | VIO VType
-  | VTChar
+  | VCharT
 
 type TypeEnv = [VType]
 
