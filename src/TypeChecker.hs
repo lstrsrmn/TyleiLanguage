@@ -168,6 +168,10 @@ check ctx (RLetType t c r) b = do
   let vc = evalType (typeEnv ctx) c
   r <- check (typeDefine ctx t vc) r b
   pure (LetType t c r)
+check ctx ne ty = do
+  (vne, neType) <- infer ctx ne
+  conv 0 neType ty
+  pure vne
 
 --check ctx t a = do
 --  (t, a') <- infer ctx t
