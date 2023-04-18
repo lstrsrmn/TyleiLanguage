@@ -75,6 +75,7 @@ infer ctx (RVar x) = do
   pure (Var x, a)
 infer _ RStar = pure (Star, VUnit)
 infer _ (RNum i) = pure (Num i, VNat)
+infer _ (RChar c) = pure (TChar c, VTChar)
 infer ctx (RApp t u) = do
   (t, tType) <- infer ctx t
   case tType of
@@ -117,7 +118,11 @@ infer ctx (RFix f t bs) = do
         bs <- mapM (checkBranch (bind ctx f vt)) bs
         pure (Fix f t bs, vt)
     _ -> throwError "Inductive Function has wrong structure."
-
+infer ctx (RBind x a t u) = do
+  a <- checkType ctx a
+  t <- check ctx t a
+  (u, uType) <- infer (bind ctx x a) u
+  pure (Bind x a t u, uType)
 infer ctx (RLet x a t u) = do
   a <- checkType ctx a
   let va = evalType (typeEnv ctx) a
@@ -157,6 +162,15 @@ check ctx (RCons c t) indF@(VInd f bs) = do
       t <- check ctx t (func indF)
       pure (Cons c t)
     _ -> throwError ("Constructor " ++ c ++ " is not a constructor of the inductive type/")
+check ctx (RBind x a t u) (VIO b) = do
+  a <- checkType ctx a
+  let va = evalType (typeEnv ctx) a
+  t <- check ctx t va
+  u <- check (bind ctx x va) u b
+  pure (Bind x a t u)
+check ctx (RReturn t) (VIO a) = do
+  t <- check ctx t a
+  pure (Return t)
 check ctx (RLet x a t u) b = do
   a <- checkType ctx a
   let va = evalType (typeEnv ctx) a
@@ -169,9 +183,9 @@ check ctx (RLetType t c r) b = do
   r <- check (typeDefine ctx t vc) r b
   pure (LetType t c r)
 check ctx ne ty = do
-  (vne, neType) <- infer ctx ne
-  conv 0 neType ty
-  pure vne
+  (ne, neType) <- infer ctx ne
+  conv (typeLevel ctx) neType ty
+  pure ne
 
 --check ctx t a = do
 --  (t, a') <- infer ctx t

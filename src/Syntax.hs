@@ -13,6 +13,7 @@ data Type v
   | ForAll Name (Type v)
   | Ind Name [(Name, Type v)]
   | IO (Type v)
+  | TVChar
   deriving Show
 
 data Raw
@@ -21,6 +22,7 @@ data Raw
   | RAbs Name Raw -- Done
   | RApp Raw Raw -- Done
   | RNum Int -- Done
+  | RChar Char
   -- Iter (C, n, t0, ts)
   -- C -> Return type
   -- n -> number of iterations
@@ -35,7 +37,7 @@ data Raw
   | RTypeApp Raw (Type Name) -- Done
   | RCons Name Raw -- Done
   | RFix Name (Type Name) [(Name, Name, Raw)] -- Done
-  | RBind Raw Raw
+  | RBind Name (Type Name) Raw Raw
   | RReturn Raw
   | RLet Name (Type Name) Raw Raw -- let x : Type = e1 in e2
   | RLetType Name (Type Name) Raw -- let type x : Type in e
@@ -50,6 +52,7 @@ data Term
   | Abs Name Term
   | App Term Term
   | Num Int
+  | TChar Char
   -- Iter (C, n, t0, ts)
   -- C -> Return type
   -- n -> number of iterations
@@ -63,6 +66,8 @@ data Term
   | TypeAbs Name Term
   | TypeApp Term (Type Ix)
   | Cons Name Term
+  | Bind Name (Type Ix) Term Term
+  | Return Term
   | Fix Name (Type Ix) [(Name, Name, Term)]
   | Let Name (Type Ix) Term Term
   | LetType Name (Type Ix) Term
@@ -110,6 +115,8 @@ data VType
   | VProduct VType VType
   | VForAll Name (VType -> VType)
   | VInd Name [(Name, VType -> VType)]
+  | VIO VType
+  | VTChar
 
 type TypeEnv = [VType]
 
