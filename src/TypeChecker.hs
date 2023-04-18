@@ -135,7 +135,7 @@ infer ctx (RMatchChar a c cs) = do
 infer ctx (RBind x a t u) = do
   a <- checkType ctx a
   let va = evalType (typeEnv ctx) a
-  t <- check ctx t va
+  t <- check ctx t (VIO va)
   (u, uType) <- infer (bind ctx x va) u
   pure (Bind x a t u, uType)
 infer ctx (RLet x a t u) = do

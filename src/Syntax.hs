@@ -55,12 +55,6 @@ data Term
   | Num Int
   | Char Char
   | MatchChar (Type Ix) Term [(Maybe Char, Term)]
-  -- Iter (C, n, t0, ts)
-  -- C -> Return type
-  -- n -> number of iterations
-  -- t0 -> base case
-  -- ts -> recursive step
-  -- e.g. Iter (_, 4, t0, ts) = ts(ts(ts(ts(t0))))
   | Iter (Type Ix) Term Term Term
   | Pair Term Term
   | Fst Term
@@ -91,14 +85,6 @@ typeBind (Context tCtx ctx tEnv tLvl) n = Context (tCtx :> n) ctx (tEnv :> VTVar
 bind :: Context -> Name -> VType -> Context
 bind (Context tCtx ctx tEnv tLvl) n t = Context tCtx (ctx :> (n, t)) tEnv tLvl
 
---infixl 4 ~:>
---(~:>) :: Context -> (Name, VType) -> Context
---context ~:> t = context{termContext = termContext context :> t}
-
---infixl 4 |:>
---(|:>) :: Context -> Name -> Context
---context |:> n = context{typeContext = typeContext context :> n}
-
 infixl 4 :>
 pattern (:>) :: [a] -> a -> [a]
 pattern xs :> x = x : xs
@@ -124,7 +110,21 @@ type TypeEnv = [VType]
 
 data Val
   = VVar Lvl
-  | Todo
--- Needs semantic values
+  | VStar
+  | VAbs Name (Val->Val)
+  | VApp Val Val
+  | VNum Int
+  | VChar Char
+  | VMatchChar VType Val [(Maybe Char, Val)]
+  | VIter VType Val Val Val
+  | VPair Val Val
+  | VFst Val
+  | VSnd Val
+  | VTypeAbs Name (VType -> Val)
+  | VTypeApp Val VType
+  | VCons Name Val
+  | VBind Name VType Val Val
+  | VReturn Val
+  | VFix Name VType [(Name, Name, Val -> Val)]
 
 type Env = [Val]
