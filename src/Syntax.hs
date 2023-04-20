@@ -123,8 +123,8 @@ data Val
   | VTypeAbs Name (VType -> Val)
   | VTypeApp Val VType
   | VCons Name Val
-  | VBind Name VType Val Val
+  | VBind Name VType Val (Val -> Val)
   | VReturn Val
-  | VFix Name VType [(Name, Name, Val -> Val)]
+  | VFix Name VType [(Name, Name, Val -> Val -> Val)]
 
 type Env = [Val]

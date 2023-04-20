@@ -1,6 +1,14 @@
 module Eval where
 import Syntax
-
+($$) :: Val -> Val -> Val
+(VAbs _ t) $$ a = t a
+fix_f@(VFix _ _ bs) $$ cons@(VCons y u) =
+  let
+    checkBranch :: [(Name, Name, Val -> Val -> Val)] -> Val
+    checkBranch ((ci, _, ti):bs) = if ci == y then ti fix_f u else checkBranch bs
+    checkBranch [] = VApp fix_f cons
+  in checkBranch bs
+f $$ a = VApp f a
 evalType :: TypeEnv -> Type Ix ->  VType
 evalType env (TVar (Ix x)) = env !! x
 evalType _ Unit = VUnit
@@ -23,21 +31,30 @@ eval env typeEnv (App t u) =
     vt -> VApp vt vu
 eval _ _ (Num n) = VNum n
 eval _ _ (Char c) = VChar c
-eval env typeEnv (MatchChar a c cs) =
+eval env typeEnv (MatchChar a t bs) =
   let
     evalBranch :: (Maybe Char, Term) -> (Maybe Char, Val)
     evalBranch (mc, t) = (mc, eval env typeEnv t)
-  in VMatchChar (evalType typeEnv a) (eval env typeEnv c) (map evalBranch cs)
-eval env typeEnv (Iter c n t0 ts) =
+    matchBranch :: Val -> [(Maybe Char, Term)] -> Val
+    matchBranch (VChar c) ((Just c',t'):cs)
+      | c == c' = eval env typeEnv t'
+      | otherwise = matchBranch (VChar c) cs
+    matchBranch _ ((Nothing, t'):_) = eval env typeEnv t'
+    matchBranch vt [] = VMatchChar (evalType typeEnv a) vt (map evalBranch bs)
+  in matchBranch (eval env typeEnv t) bs
+eval env typeEnv (Iter c n@(Num p) t0 ts) =
   let
-    ec = evalType typeEnv c
-    en = eval env typeEnv n
-    et0 = eval env typeEnv t0
-    ets = eval env typeEnv ts
-  in VIter ec en et0 ets
+    vn = eval env typeEnv n
+    vt0 = eval env typeEnv t0
+    vts = eval env typeEnv ts
+    recurse :: Val -> Val
+    recurse (VNum 0) = vt0
+    recurse (VNum a) = vts $$ recurse (VNum (a - 1)) 
+    recurse _ = VApp vts (eval env typeEnv (Iter c (Num (p-1)) t0 ts))
+  in recurse vn
 eval env typeEnv (Pair f s) = VPair (eval env typeEnv f) (eval env typeEnv s)
 eval env typeEnv (Fst t) =
-  case eval env typeEnv t of
+  case eval env typeEnv t of 
     VPair f _ -> f
     a -> VFst a
 eval env typeEnv (Snd t) =
@@ -48,12 +65,18 @@ eval env typeEnv (TypeAbs n t) =
   VTypeAbs n (\va -> eval env (typeEnv :> va) t)
 eval env typeEnv (TypeApp t a) = VTypeApp (eval env typeEnv t) (evalType typeEnv a)
 eval env typeEnv (Cons n t) = VCons n (eval env typeEnv t)
-eval env typeEnv (Bind n t a b) = VBind n (evalType typeEnv t) (eval env typeEnv a) (eval env typeEnv b)
+eval env typeEnv (Bind x a t u) =
+  let vt = eval env typeEnv t
+      va = evalType typeEnv a
+  in case vt of
+    VReturn t' -> eval (env :> t') typeEnv u
+    t' -> VBind x va t' (\vt -> eval (env :> vt) typeEnv u)
 eval env typeEnv (Return t) = VReturn (eval env typeEnv t)
-eval env typeEnv (Fix n t bs) = let
-  evalBranch :: (Name, Name, Term) -> (Name, Name, Val -> Val)
-  evalBranch (c, x, t) = (c, x, \va -> eval (env :> va) typeEnv t)
-  in VFix n (evalType typeEnv t) (map evalBranch bs)
+eval env typeEnv (Fix x t bs) =
+   let
+     evalBranch :: (Name, Name, Term) -> (Name, Name, Val -> Val -> Val)
+     evalBranch (ci, xi, ti) = (ci, xi, \vx vs -> eval (env :> vx :> vs) typeEnv ti)
+   in VFix x (evalType typeEnv t) (map evalBranch bs)
 eval env typeEnv (Let _ _ t u) =
   let e1 = eval env typeEnv t
   in eval (env :> e1) typeEnv u
