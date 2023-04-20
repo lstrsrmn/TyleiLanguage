@@ -2,10 +2,12 @@ module Eval where
 import Syntax
 ($$) :: Val -> Val -> Val
 (VAbs _ t) $$ a = t a
-fix_f@(VFix _ _ bs) $$ cons@(VCons y u) =
+fix_f@(VFix _ _ bs) $$ cons@(VCons c u) =
   let
     checkBranch :: [(Name, Name, Val -> Val -> Val)] -> Val
-    checkBranch ((ci, _, ti):bs) = if ci == y then ti fix_f u else checkBranch bs
+    checkBranch ((ci, _, ti):bs)
+      | ci == c = ti fix_f u
+      | otherwise = checkBranch bs
     checkBranch [] = VApp fix_f cons
   in checkBranch bs
 f $$ a = VApp f a
@@ -41,16 +43,18 @@ eval env typeEnv (MatchChar a t bs) =
       | otherwise = matchBranch (VChar c) cs
     matchBranch _ ((Nothing, t'):_) = eval env typeEnv t'
     matchBranch vt [] = VMatchChar (evalType typeEnv a) vt (map evalBranch bs)
+    matchBranch vt bs = matchBranch vt (tail bs)
   in matchBranch (eval env typeEnv t) bs
-eval env typeEnv (Iter c n@(Num p) t0 ts) =
+eval env typeEnv (Iter c n t0 ts) =
   let
+    vc = evalType typeEnv c
     vn = eval env typeEnv n
     vt0 = eval env typeEnv t0
     vts = eval env typeEnv ts
     recurse :: Val -> Val
     recurse (VNum 0) = vt0
     recurse (VNum a) = vts $$ recurse (VNum (a - 1)) 
-    recurse _ = VApp vts (eval env typeEnv (Iter c (Num (p-1)) t0 ts))
+    recurse _ = VIter vc vn vt0 vts
   in recurse vn
 eval env typeEnv (Pair f s) = VPair (eval env typeEnv f) (eval env typeEnv s)
 eval env typeEnv (Fst t) =
