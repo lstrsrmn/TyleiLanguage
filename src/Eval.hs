@@ -1,5 +1,6 @@
 module Eval where
 import Syntax
+import Lexer
 ($$) :: Val -> Val -> Val
 (VAbs _ t) $$ a = t a
 fix_f@(VFix _ _ bs) $$ cons@(VCons c u) =
@@ -88,4 +89,48 @@ eval env typeEnv (LetType _ a t) =
   let
     i = evalType typeEnv a
   in eval env (typeEnv :> i) t
-  
+
+quoteType :: Lvl -> VType -> Type Ix
+quoteType (Lvl l) (VTVar (Lvl x)) = TVar (Ix (l - x - 1))
+quoteType _ VUnit = Unit
+quoteType lvl (VFunction a b) = Function (quoteType lvl a) (quoteType lvl b)
+quoteType _ VNat = Nat
+quoteType lvl (VProduct a b) = Product (quoteType lvl a) (quoteType lvl b)
+quoteType lvl (VForAll x f) = ForAll x (quoteType (lvl+1) (f (VTVar lvl)))
+quoteType lvl (VInd x bs) =
+  let
+    quoteBranch :: (Name, VType -> VType) -> (Name, Type Ix)
+    quoteBranch (x, f) = (x, quoteType (lvl+1) (f (VTVar lvl)))
+  in Ind x (map quoteBranch bs)
+quoteType lvl (VIO a) = IO (quoteType lvl a)
+quoteType _ VCharT = CharT
+
+quote :: Lvl -> Val -> Term
+quote (Lvl l) (VVar (Lvl x)) = Var (Ix (l - x - 1))
+quote _ VStar = Star
+quote lvl (VAbs x vt) =
+  let
+    vx = VVar lvl
+    tx = vt vx
+  in Abs x (quote (lvl+1) tx)
+quote lvl (VApp vt vu) = App (quote lvl vt) (quote lvl vu)
+quote _ (VNum n) = Num n
+quote _ (VChar c) = Char c
+quote lvl (VMatchChar a t bs) =
+  let quoteBranch :: (Maybe Char, Val) -> (Maybe Char, Term)
+      quoteBranch (mc, t) = (mc, quote lvl t)
+  in MatchChar (quoteType lvl a) (quote lvl t) (map quoteBranch bs)
+quote lvl (VIter a t u v) = Iter (quoteType lvl a) (quote lvl t) (quote lvl u) (quote lvl v)
+quote lvl (VPair t u) = Pair (quote lvl t) (quote lvl u)
+quote lvl (VFst t) = Fst (quote lvl t)
+quote lvl (VSnd t) = Snd (quote lvl t)
+quote lvl (VTypeAbs x f) = TypeAbs x (quote (lvl+1) (f (VTVar lvl)))
+quote lvl (VTypeApp t a) = TypeApp (quote lvl t) (quoteType lvl a)
+quote lvl (VCons x t) = Cons x (quote lvl t)
+quote lvl (VBind x a t f) = Bind x (quoteType lvl a) (quote lvl t) (quote (lvl+1) (f (VVar lvl)))
+quote lvl (VReturn t) = Return (quote lvl t)
+quote lvl (VFix x a bs) =
+  let
+    quoteBranch :: (Name, Name, Val -> Val -> Val) -> (Name, Name, Term)
+    quoteBranch (x, y, f) = (x, y, quote (lvl+2) (f (VVar lvl) (VVar (lvl+1))))
+  in Fix x (quoteType lvl a) (map quoteBranch bs)

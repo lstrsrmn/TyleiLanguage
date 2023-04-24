@@ -40,6 +40,10 @@ library:
   source-dirs: src
   dependencies:
     - mtl
+    - array
+  build-tools:
+    - happy
+    - alex
 
 executables:
   tylei-exe:
