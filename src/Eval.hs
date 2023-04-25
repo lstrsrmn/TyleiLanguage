@@ -1,6 +1,6 @@
 module Eval where
 import Syntax
-import Lexer
+
 ($$) :: Val -> Val -> Val
 (VAbs _ t) $$ a = t a
 fix_f@(VFix _ _ bs) $$ cons@(VCons c u) =

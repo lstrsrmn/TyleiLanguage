@@ -17,31 +17,32 @@ data Type v
   deriving Show
 
 data Raw
-  = RVar Name -- done
-  | RStar -- done
-  | RAbs Name Raw -- Done
-  | RApp Raw Raw -- Done
-  | RNum Int -- Done
-  | RChar Char
+  = RVar Name
+  | RStar -- ()
+  | RAbs Name Raw -- \Name . Expr
+  | RApp Raw Raw -- a b
+  | RNum Int
+  | RChar Char -- `a`
   | RMatchChar (Type Name) Raw [(Maybe Char, Raw)]
-  -- Iter (C, n, t0, ts)
-  -- C -> Return type
-  -- n -> number of iterations
-  -- t0 -> base case
-  -- ts -> recursive step
-  -- e.g. Iter (_, 4, t0, ts) = ts(ts(ts(ts(t0))))
-  | RIter (Type Name) Raw Raw Raw -- Done
-  | RPair Raw Raw -- Done
-  | RFst Raw -- Done
-  | RSnd Raw -- Done
-  | RTypeAbs Name Raw -- 
-  | RTypeApp Raw (Type Name) -- Done
-  | RCons Name Raw -- Done
-  | RFix Name (Type Name) [(Name, Name, Raw)] -- Done
+  -- matchChar [type] expr
+  -- | 'a' -> ta
+  -- | 'b' -> tb
+  -- | ...
+  -- | _ -> twildcard
+  | RIter (Type Name) Raw Raw Raw -- iter [A] n t0 ts
+  | RPair Raw Raw -- (a, b)
+  | RFst Raw -- fst a
+  | RSnd Raw -- snd a
+  | RTypeAbs Name Raw -- /\ a . expr
+  | RTypeApp Raw (Type Name) -- expr @A
+  | RCons Name Raw --
+  | RFix Name (Type Name) [(Name, Name, Raw)] -- fix [A]
+  -- | Cons1 idk -> expr1
+  -- | Cons2 idk -> expr2
   | RBind Name (Type Name) Raw Raw
   | RReturn Raw
-  | RLet Name (Type Name) Raw Raw -- let x : Type = e1 in e2
-  | RLetType Name (Type Name) Raw -- let type x : Type in e
+  | RLet Name (Type Name) Raw Raw -- let x :: Type = e1 in e2
+  | RLetType Name (Type Name) Raw -- letType x :: Type in e
 
 newtype Ix = Ix Int
   deriving (Eq, Ord, Num, Show)

@@ -41,6 +41,8 @@ library:
   dependencies:
     - mtl
     - array
+    - base
+    - bytestring
   build-tools:
     - happy
     - alex

@@ -6,44 +6,74 @@ module Lexer where
 
 $digit = 0-9
 $alpha = [a-zA-Z]
+$capital = [A-Z]
 
 tokens :-
 
-       "--".*     ;
-       $white+    ;
-       let        {\s -> Let}
-       letType    {\s -> LetType}
-       in         {\s -> In}
-       \-\>       {\s -> Function}
-       \,         {\s -> Product}
-       fix        {\s -> Fix}
-       matchChar  {\s -> MatchChar}
-       iter       {\s -> Iter}
-       =          {\s -> Abs}
-       fst        {\s -> Fst}
-       \/\\       {\s -> TypeAbs}
-       $alpha+    {\s -> Var s}
+       "--".*          ;
+       $white+         ;
+       =               {\s -> TokEquals}
+       \:\:            {\s -> TokType}
+       \(\)            {\s -> TokUnit}
+       "->"            {\s -> TokFunction}
+       \,              {\s -> TokProduct}
+       forAll          {\s -> TokForAll}
+       ind             {\s -> TokInd}
+       \`              {\s -> TokSingleQuote}
+       \\              {\s -> TokAbs}
+       \.              {\s -> TokDot}
+       \|              {\s -> TokCase}
+       \_              {\s -> TokWildcard}
+       fst             {\s -> TokFst}
+       snd             {\s -> TokSnd}
+       \/\\            {\s -> TokTypeAbs}
+       \@              {\s -> TokAt}
+       fix             {\s -> TokFix}
+       let             {\s -> TokLet}
+       type            {\s -> TokLetType}
+       in              {\s -> TokIn}
+       matchChar       {\s -> TokMatchChar}
+       iter            {\s -> TokIter}
+       [A-Z] [$alpha]+ {\s -> TokCons s}
+       $alpha+         {\s -> TokVar s}
+       $digit+         {\s -> TokInt (read s)}
+       \[              {\s -> TokOpenSquareBracket}
+       \]              {\s -> TokCloseSquareBracket}
+       \(              {\s -> TokOpenBracket}
+       \)              {\s -> TokCloseBracket}
 
 
 {
 
-data Token
-     = Let
-     | LetType
-     | In
-     | Function
-     | Product
-     | Fix
-     | MatchChar
-     | Iter
-     | Abs
-     | Fst
-     | TypeAbs
-     | Int Int
-     | Var String
+data Tokens
+     = TokOpenSquareBracket
+     | TokCloseSquareBracket
+     | TokOpenBracket
+     | TokCloseBracket
+     | TokUnit
+     | TokVar String
+     | TokCons String
+     | TokFunction
+     | TokInt Int
+     | TokProduct
+     | TokForAll
+     | TokInd
+     | TokSingleQuote
+     | TokAbs
+     | TokDot
+     | TokCase
+     | TokWildcard
+     | TokFst
+     | TokSnd
+     | TokTypeAbs
+     | TokAt
+     | TokLet
+     | TokLetType
+     | TokIn
+     | TokFix
+     | TokMatchChar
+     | TokIter
+     | TokEquals
+     | TokType
      deriving (Eq, Show)
-
-main = do
-     s <- getContents
-     print (alexScanTokens s)
 }
