@@ -134,3 +134,7 @@ quote lvl (VFix x a bs) =
     quoteBranch :: (Name, Name, Val -> Val -> Val) -> (Name, Name, Term)
     quoteBranch (x, y, f) = (x, y, quote (lvl+2) (f (VVar lvl) (VVar (lvl+1))))
   in Fix x (quoteType lvl a) (map quoteBranch bs)
+
+
+nbe :: Term -> Term
+nbe = quote 0 . eval [] []

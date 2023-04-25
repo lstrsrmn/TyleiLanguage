@@ -33,12 +33,13 @@ conv lvl (VInd _ cs) (VInd _ cs') = do
 -- conv t t' = throwError ("Failed to convert [" ++ show t ++ "] to [" ++ show t' ++ "].")
 conv _ _ _ = throwError "Failed to convert t -> t'"
 
-checkTypeVar :: Context -> Name -> Checker Ix
+checkTypeVar :: Context -> Name-> Checker Ix
 checkTypeVar (Context [] _ _ _) n = throwError ("Type variable [" ++ n ++ "] not in scope.")
-checkTypeVar (Context (theta :> a) gamma x y) n
+checkTypeVar (Context (theta :> Nothing) gamma x y) n = (+1) <$> checkTypeVar (Context theta gamma x y) n
+checkTypeVar (Context (theta :> (Just a)) gamma x y) n
   | a == n = pure 0
   | otherwise = (+1) <$> checkTypeVar (Context theta gamma x y) n
-
+  
 checkType :: Context -> Type Name -> Checker (Type Ix)
 checkType theta (TVar n) = TVar <$> checkTypeVar theta n
 checkType _ Unit = pure Unit
@@ -62,11 +63,12 @@ checkType theta (IO a) = do
   a <- checkType theta a
   pure (IO a)
 checkType _ CharT = pure CharT
-
+  
 inferVar :: Context -> Name -> Checker (Ix, VType)
 inferVar (Context _ [] _ _) n = throwError ("Variable [" ++ n ++ "] not in scope")
 -- broken
-inferVar (Context theta (gamma :> (x, a)) i j) n
+inferVar (Context theta (gamma :> (Nothing, _)) i j) n = inferVar (Context theta gamma i j) n
+inferVar (Context theta (gamma :> (Just x, a)) i j) n
   | x == n = pure (0, a)
   | otherwise = do
       (ix, a) <- inferVar (Context theta gamma i j) n
@@ -114,7 +116,7 @@ infer ctx (RFix f t bs) = do
         checkBranch eCtx (ci, xi, ti) =
           case consMap Map.!? ci of
             Just consFunc -> do
-              ti <- check (bind eCtx xi (consFunc vt)) ti a
+              ti <- check (bind eCtx (Just xi) (consFunc vt)) ti a
               pure (ci, xi, ti)
             _ -> throwError ("Constructor " ++ ci ++ " is not a constructor for the inductive type.")
       in do

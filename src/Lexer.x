@@ -12,14 +12,19 @@ tokens :-
 
        "--".*          ;
        $white+         ;
+       \'$printable \' {\(_:s:_) -> TokTermChar s}
+       do              {\s -> TokDo}
+       Nat             {\s -> TokNat}
+       Char            {\s -> TokChar}
        =               {\s -> TokEquals}
        \:\:            {\s -> TokType}
        \(\)            {\s -> TokUnit}
-       "->"            {\s -> TokFunction}
+       "->"            {\s -> TokRightArrow}
+       "<-"            {\s -> TokLeftArrow}
+       return          {\s -> TokReturn}
        \,              {\s -> TokProduct}
        forAll          {\s -> TokForAll}
        ind             {\s -> TokInd}
-       \`              {\s -> TokSingleQuote}
        \\              {\s -> TokAbs}
        \.              {\s -> TokDot}
        \|              {\s -> TokCase}
@@ -33,27 +38,41 @@ tokens :-
        type            {\s -> TokLetType}
        in              {\s -> TokIn}
        matchChar       {\s -> TokMatchChar}
+       with            {\s -> TokWith}
        iter            {\s -> TokIter}
+       IO              {\s -> TokIO}
        [A-Z] [$alpha]+ {\s -> TokCons s}
        $alpha+         {\s -> TokVar s}
        $digit+         {\s -> TokInt (read s)}
+       \;              {\s -> TokSemiColon}
        \[              {\s -> TokOpenSquareBracket}
        \]              {\s -> TokCloseSquareBracket}
        \(              {\s -> TokOpenBracket}
        \)              {\s -> TokCloseBracket}
+       \{              {\s -> TokOpenCurlyBracket}
+       \}              {\s -> TokCloseCurlyBracket}
 
 
 {
 
-data Tokens
+data Token
      = TokOpenSquareBracket
      | TokCloseSquareBracket
      | TokOpenBracket
      | TokCloseBracket
+     | TokOpenCurlyBracket
+     | TokCloseCurlyBracket
+     | TokSemiColon
+     | TokDo
+     | TokNat
+     | TokChar
+     | TokTermChar Char
      | TokUnit
      | TokVar String
      | TokCons String
-     | TokFunction
+     | TokLeftArrow
+     | TokRightArrow
+     | TokReturn
      | TokInt Int
      | TokProduct
      | TokForAll
@@ -72,7 +91,9 @@ data Tokens
      | TokIn
      | TokFix
      | TokMatchChar
+     | TokWith
      | TokIter
+     | TokIO
      | TokEquals
      | TokType
      deriving (Eq, Show)

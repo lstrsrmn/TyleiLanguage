@@ -57,6 +57,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - tylei
+    - mtl
 
 tests:
   tylei-test:
