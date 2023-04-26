@@ -24,6 +24,9 @@ data Raw
   | RAbs Binder Raw -- \Name . Expr
   | RApp Raw Raw -- a b
   | RNum Int
+  | RAdd Raw Raw
+  | RMinus Raw Raw
+  | RTimes Raw Raw
   | RChar Char -- `a`
   | RMatchChar (Type Name) Raw [(Maybe Char, Raw)]
   -- matchChar [type] expr with
@@ -43,6 +46,8 @@ data Raw
   -- | Cons2 idk -> expr2
   | RBind Binder (Type Name) Raw Raw -- do {x :: A <- t; u}
   | RReturn Raw -- return expr
+  | RPrint Raw -- print expr
+  | RReadFile String -- readFile fileName
   | RLet Binder (Type Name) Raw Raw -- let x :: Type = e1 in e2
   | RLetType Binder (Type Name) Raw -- let type x = Type in e
 
@@ -56,6 +61,9 @@ data Term
   | Abs Binder Term
   | App Term Term
   | Num Int
+  | Add Term Term
+  | Minus Term Term
+  | Times Term Term
   | Char Char
   | MatchChar (Type Ix) Term [(Maybe Char, Term)]
   | Iter (Type Ix) Term Term Term
@@ -67,6 +75,8 @@ data Term
   | Cons Name Term
   | Bind Binder (Type Ix) Term Term
   | Return Term
+  | Print Term
+  | ReadFile String
   | Fix Binder (Type Ix) [(Name, Name, Term)]
   | Let Binder (Type Ix) Term Term
   | LetType Binder (Type Ix) Term
@@ -118,6 +128,9 @@ data Val
   | VAbs Binder (Val->Val)
   | VApp Val Val
   | VNum Int
+  | VAdd Val Val
+  | VMinus Val Val
+  | VTimes Val Val
   | VChar Char
   | VMatchChar VType Val [(Maybe Char, Val)]
   | VIter VType Val Val Val
@@ -129,6 +142,11 @@ data Val
   | VCons Name Val
   | VBind Binder VType Val (Val -> Val)
   | VReturn Val
+  | VPrint Val
+  | VReadFile String
   | VFix Binder VType [(Name, Name, Val -> Val -> Val)]
 
 type Env = [Val]
+
+vtypeString :: VType
+vtypeString = VInd (Just "String") [("StrNil",  const VUnit), ("StrCons", VProduct VCharT)]

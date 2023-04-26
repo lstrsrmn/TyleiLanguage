@@ -30,7 +30,8 @@ conv lvl (VInd _ cs) (VInd _ cs') = do
     convCons (c, b) (c', b')
       | c == c' = conv (lvl + 1) (b (VTVar lvl)) (b' (VTVar lvl))
       | otherwise = throwError ("Cannot convert constructors [" ++ c ++ "] and [" ++ c' ++ "].")
--- conv t t' = throwError ("Failed to convert [" ++ show t ++ "] to [" ++ show t' ++ "].")
+conv lvl (VIO a) (VIO a') = conv lvl a a'
+conv _ VCharT VCharT = pure ()
 conv _ _ _ = throwError "Failed to convert t -> t'"
 
 checkTypeVar :: Context -> Name-> Checker Ix
@@ -66,8 +67,9 @@ checkType _ CharT = pure CharT
   
 inferVar :: Context -> Name -> Checker (Ix, VType)
 inferVar (Context _ [] _ _) n = throwError ("Variable [" ++ n ++ "] not in scope")
--- broken
-inferVar (Context theta (gamma :> (Nothing, _)) i j) n = inferVar (Context theta gamma i j) n
+inferVar (Context theta (gamma :> (Nothing, _)) i j) n = do
+  (ix, a) <- inferVar (Context theta gamma i j) n
+  pure (ix+1, a)
 inferVar (Context theta (gamma :> (Just x, a)) i j) n
   | x == n = pure (0, a)
   | otherwise = do
@@ -109,14 +111,14 @@ infer ctx (RFix f t bs) = do
   t <- checkType ctx t
   let vt = evalType (typeEnv ctx) t
   case vt of
-    VFunction (VInd _ cs) a ->
+    VFunction i@(VInd _ cs) a ->
       let
         consMap = Map.fromList cs
         checkBranch :: Context -> (Name, Name, Raw) -> Checker (Name, Name, Term)
         checkBranch eCtx (ci, xi, ti) =
           case consMap Map.!? ci of
             Just consFunc -> do
-              ti <- check (bind eCtx (Just xi) (consFunc vt)) ti a
+              ti <- check (bind eCtx (Just xi) (consFunc i)) ti a
               pure (ci, xi, ti)
             _ -> throwError ("Constructor " ++ ci ++ " is not a constructor for the inductive type.")
       in do
@@ -140,6 +142,10 @@ infer ctx (RBind x a t u) = do
   t <- check ctx t (VIO va)
   (u, uType) <- infer (bind ctx x va) u
   pure (Bind x a t u, uType)
+infer ctx (RPrint t) = do
+  t <- check ctx t vtypeString
+  pure (Print t, VIO VUnit)
+infer _ (RReadFile s) = pure (ReadFile s, VIO vtypeString)
 infer ctx (RLet x a t u) = do
   a <- checkType ctx a
   let va = evalType (typeEnv ctx) a
@@ -159,6 +165,18 @@ infer ctx (RTypeApp t u) = do
     VForAll _ b -> do
       pure (TypeApp t u, b vu)
     _ -> throwError "Application head must have function type"
+infer ctx (RAdd t u) = do
+  vt <- check ctx t VNat
+  vu <- check ctx u VNat
+  pure (Add vt vu, VNat)
+infer ctx (RMinus t u) = do
+  vt <- check ctx t VNat
+  vu <- check ctx u VNat
+  pure (Minus vt vu, VNat)
+infer ctx (RTimes t u) = do
+  vt <- check ctx t VNat
+  vu <- check ctx u VNat
+  pure (Times vt vu, VNat)
 infer _ _ = throwError "Inference failed."
 
 check :: Context -> Raw -> VType -> Checker Term

@@ -43,6 +43,7 @@ library:
     - array
     - base
     - bytestring
+    - pretty
   build-tools:
     - happy
     - alex

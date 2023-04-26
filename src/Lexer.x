@@ -7,50 +7,58 @@ module Lexer where
 $digit = 0-9
 $alpha = [a-zA-Z]
 $capital = [A-Z]
+$stringChars = $printable # \"
 
 tokens :-
 
        "--".*          ;
        $white+         ;
-       \'$printable \' {\(_:s:_) -> TokTermChar s}
-       do              {\s -> TokDo}
-       Nat             {\s -> TokNat}
-       Char            {\s -> TokChar}
-       =               {\s -> TokEquals}
-       \:\:            {\s -> TokType}
-       \(\)            {\s -> TokUnit}
-       "->"            {\s -> TokRightArrow}
-       "<-"            {\s -> TokLeftArrow}
-       return          {\s -> TokReturn}
-       \,              {\s -> TokProduct}
-       forAll          {\s -> TokForAll}
-       ind             {\s -> TokInd}
-       \\              {\s -> TokAbs}
-       \.              {\s -> TokDot}
-       \|              {\s -> TokCase}
-       \_              {\s -> TokWildcard}
-       fst             {\s -> TokFst}
-       snd             {\s -> TokSnd}
-       \/\\            {\s -> TokTypeAbs}
-       \@              {\s -> TokAt}
-       fix             {\s -> TokFix}
-       let             {\s -> TokLet}
-       type            {\s -> TokLetType}
-       in              {\s -> TokIn}
-       matchChar       {\s -> TokMatchChar}
-       with            {\s -> TokWith}
-       iter            {\s -> TokIter}
-       IO              {\s -> TokIO}
-       [A-Z] [$alpha]+ {\s -> TokCons s}
+       \'\\n\'         {\_ -> TokTermChar '\n'}
+       \'$printable\'  {\(_:s:_) -> TokTermChar s}
+       \"$stringChars*\"{TokString . init . tail}
+       do              {\_ -> TokDo}
+       Nat             {\_ -> TokNat}
+       Char            {\_ -> TokChar}
+       =               {\_ -> TokEquals}
+       \+              {\_ -> TokPlus}
+       \-              {\_ -> TokMinus}
+       \*              {\_ -> TokTimes}
+       \:\:            {\_ -> TokType}
+       \(\)            {\_ -> TokUnit}
+       "->"            {\_ -> TokRightArrow}
+       "<-"            {\_ -> TokLeftArrow}
+       return          {\_ -> TokReturn}
+       \,              {\_ -> TokProduct}
+       forAll          {\_ -> TokForAll}
+       ind             {\_ -> TokInd}
+       \\              {\_ -> TokAbs}
+       \.              {\_ -> TokDot}
+       \|              {\_ -> TokCase}
+       \_              {\_ -> TokWildcard}
+       fst             {\_ -> TokFst}
+       snd             {\_ -> TokSnd}
+       \/\\            {\_ -> TokTypeAbs}
+       \@              {\_ -> TokAt}
+       fix             {\_ -> TokFix}
+       let             {\_ -> TokLet}
+       type            {\_ -> TokLetType}
+       in              {\_ -> TokIn}
+       matchChar       {\_ -> TokMatchChar}
+       with            {\_ -> TokWith}
+       iter            {\_ -> TokIter}
+       IO              {\_ -> TokIO}
+       print           {const TokPrint}
+       readFile        {const TokReadFile}
+       [A-Z] [$alpha]* {\s -> TokCons s}
        $alpha+         {\s -> TokVar s}
        $digit+         {\s -> TokInt (read s)}
-       \;              {\s -> TokSemiColon}
-       \[              {\s -> TokOpenSquareBracket}
-       \]              {\s -> TokCloseSquareBracket}
-       \(              {\s -> TokOpenBracket}
-       \)              {\s -> TokCloseBracket}
-       \{              {\s -> TokOpenCurlyBracket}
-       \}              {\s -> TokCloseCurlyBracket}
+       \;              {\_ -> TokSemiColon}
+       \[              {\_ -> TokOpenSquareBracket}
+       \]              {\_ -> TokCloseSquareBracket}
+       \(              {\_ -> TokOpenBracket}
+       \)              {\_ -> TokCloseBracket}
+       \{              {\_ -> TokOpenCurlyBracket}
+       \}              {\_ -> TokCloseCurlyBracket}
 
 
 {
@@ -63,6 +71,9 @@ data Token
      | TokOpenCurlyBracket
      | TokCloseCurlyBracket
      | TokSemiColon
+     | TokString String
+     | TokPrint
+     | TokReadFile
      | TokDo
      | TokNat
      | TokChar
@@ -95,6 +106,9 @@ data Token
      | TokIter
      | TokIO
      | TokEquals
+     | TokPlus
+     | TokMinus
+     | TokTimes
      | TokType
      deriving (Eq, Show)
 }

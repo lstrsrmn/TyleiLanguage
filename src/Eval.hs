@@ -27,11 +27,7 @@ eval :: Env -> TypeEnv -> Term -> Val
 eval env _ (Var (Ix x)) = env !! x
 eval _ _ Star = VStar
 eval env typeEnv (Abs x t) = VAbs x (\vx -> eval (env :> vx) typeEnv t)
-eval env typeEnv (App t u) =
-  let vu = eval env typeEnv u
-  in case eval env typeEnv t of
-    VAbs _ t -> t vu
-    vt -> VApp vt vu
+eval env typeEnv (App t u) = eval env typeEnv t $$ eval env typeEnv u
 eval _ _ (Num n) = VNum n
 eval _ _ (Char c) = VChar c
 eval env typeEnv (MatchChar a t bs) =
@@ -54,12 +50,12 @@ eval env typeEnv (Iter c n t0 ts) =
     vts = eval env typeEnv ts
     recurse :: Val -> Val
     recurse (VNum 0) = vt0
-    recurse (VNum a) = vts $$ recurse (VNum (a - 1)) 
+    recurse (VNum a) = vts $$ recurse (VNum (a - 1))
     recurse _ = VIter vc vn vt0 vts
   in recurse vn
 eval env typeEnv (Pair f s) = VPair (eval env typeEnv f) (eval env typeEnv s)
 eval env typeEnv (Fst t) =
-  case eval env typeEnv t of 
+  case eval env typeEnv t of
     VPair f _ -> f
     a -> VFst a
 eval env typeEnv (Snd t) =
@@ -68,7 +64,13 @@ eval env typeEnv (Snd t) =
     a -> VSnd a
 eval env typeEnv (TypeAbs n t) =
   VTypeAbs n (\va -> eval env (typeEnv :> va) t)
-eval env typeEnv (TypeApp t a) = VTypeApp (eval env typeEnv t) (evalType typeEnv a)
+eval env typeEnv (TypeApp t a) =
+  let
+    vt = eval env typeEnv t
+    va = evalType typeEnv a
+  in case vt of
+    VTypeAbs _ f -> f va
+    _ -> VTypeApp vt va
 eval env typeEnv (Cons n t) = VCons n (eval env typeEnv t)
 eval env typeEnv (Bind x a t u) =
   let vt = eval env typeEnv t
@@ -77,6 +79,8 @@ eval env typeEnv (Bind x a t u) =
     VReturn t' -> eval (env :> t') typeEnv u
     t' -> VBind x va t' (\vt -> eval (env :> vt) typeEnv u)
 eval env typeEnv (Return t) = VReturn (eval env typeEnv t)
+eval env typeEnv (Print t) = VPrint (eval env typeEnv t)
+eval _ _ (ReadFile s) = VReadFile s
 eval env typeEnv (Fix x t bs) =
    let
      evalBranch :: (Name, Name, Term) -> (Name, Name, Val -> Val -> Val)
@@ -89,6 +93,18 @@ eval env typeEnv (LetType _ a t) =
   let
     i = evalType typeEnv a
   in eval env (typeEnv :> i) t
+eval env typeEnv (Add t u) =
+  case (eval env typeEnv t, eval env typeEnv u) of
+    (VNum i, VNum j) -> VNum (i+j)
+    (vt, vu) -> VAdd vt vu
+eval env typeEnv (Minus t u) =
+  case (eval env typeEnv t, eval env typeEnv u) of
+    (VNum i, VNum j) -> VNum (max 0 (i-j))
+    (vt, vu) -> VMinus vt vu
+eval env typeEnv (Times t u) =
+  case (eval env typeEnv t, eval env typeEnv u) of
+    (VNum i, VNum j) -> VNum (i*j)
+    (vt, vu) -> VTimes vt vu
 
 quoteType :: Lvl -> VType -> Type Ix
 quoteType (Lvl l) (VTVar (Lvl x)) = TVar (Ix (l - x - 1))
@@ -129,12 +145,41 @@ quote lvl (VTypeApp t a) = TypeApp (quote lvl t) (quoteType lvl a)
 quote lvl (VCons x t) = Cons x (quote lvl t)
 quote lvl (VBind x a t f) = Bind x (quoteType lvl a) (quote lvl t) (quote (lvl+1) (f (VVar lvl)))
 quote lvl (VReturn t) = Return (quote lvl t)
+quote lvl (VPrint t) = Print (quote lvl t)
+quote _ (VReadFile s) = ReadFile s
+quote lvl (VAdd t u) = Add (quote lvl t) (quote lvl u)
+quote lvl (VMinus t u) = Minus (quote lvl t) (quote lvl u)
+quote lvl (VTimes t u) = Times (quote lvl t) (quote lvl u)
 quote lvl (VFix x a bs) =
   let
     quoteBranch :: (Name, Name, Val -> Val -> Val) -> (Name, Name, Term)
     quoteBranch (x, y, f) = (x, y, quote (lvl+2) (f (VVar lvl) (VVar (lvl+1))))
   in Fix x (quoteType lvl a) (map quoteBranch bs)
 
-
 nbe :: Term -> Term
 nbe = quote 0 . eval [] []
+
+
+class Monad m => ExecEnv m where
+  runPrint :: String -> m ()
+  runReadFile :: String -> m String
+
+run :: ExecEnv m => Val -> m Val
+run (VPrint t) = do
+  runPrint (castToStr t)
+  pure VStar
+  where
+    castToStr :: Val -> String
+    castToStr (VCons "StrNil" _) = []
+    castToStr (VCons "StrCons" (VPair (VChar c) cs)) = c:castToStr cs
+    castToStr _ = error "Error: Blocked term."
+run (VReadFile s) = castToVal <$> runReadFile s
+  where
+    castToVal :: String -> Val
+    castToVal [] = VCons "StrNil" VStar
+    castToVal (c:cs) = VCons "StrCons" (VPair (VChar c) (castToVal cs))
+run (VReturn t) = pure t
+run (VBind _ _ t u) = do
+  vt <- run t
+  run (u vt)
+run _ = error "Error: Blocked term."

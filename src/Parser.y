@@ -17,6 +17,9 @@ import Syntax
        Nat             {TokNat}
        Char            {TokChar}
        '='             {TokEquals}
+       '+'             {TokPlus}
+       '-'             {TokMinus}
+       '*'             {TokTimes}
        '::'            {TokType}
        '()'            {TokUnit}
        '->'            {TokRightArrow}
@@ -44,6 +47,9 @@ import Syntax
        Var             {TokVar $$}
        Int             {TokInt $$}
        IO              {TokIO}
+       print           {TokPrint}
+       readFile        {TokReadFile}
+       String          {TokString $$}
        ';'             {TokSemiColon}
        '['             {TokOpenSquareBracket}
        ']'             {TokCloseSquareBracket}
@@ -62,6 +68,7 @@ exp : '\\' binder '.' exp                                   {RAbs $2 $4}
     | '\/\\' typeBinder '.' exp                             {RTypeAbs $2 $4}
     | do '{' binder '::' type_exp '<-' exp ';' exp'}'       {RBind $3 $5 $7 $9}
     | let type typeBinder '=' type_exp in exp               {RLetType $3 $5 $7}
+    | term '*' exp                                          {RTimes $1 $3}
     | term                                                  {$1}
 
 term : term atom                                            {RApp $1 $2}
@@ -69,8 +76,12 @@ term : term atom                                            {RApp $1 $2}
      | fst atom                                             {RFst $2}
      | snd atom                                             {RSnd $2}
      | Cons atom                                            {RCons $1 $2}
-     | return exp                                           {RReturn $2}
+     | return atom                                          {RReturn $2}
      | iter '['type_exp']' '('exp','exp','exp')'            {RIter $3 $6 $8 $10}
+     | atom '+' term                                        {RAdd $1 $3}
+     | atom '-' term                                        {RMinus $1 $3}
+     | print atom                                           {RPrint $2}
+     | readFile String                                      {RReadFile $2}
      | atom                                                 {$1}
 
 atom : '()'                                                 {RStar}
@@ -91,6 +102,7 @@ type_atom : '('type_exp','type_exp')'              {Product $2 $4}
           | '()'                                   {Unit}
           | Nat                                    {Nat}
           | Cons                                   {TVar $1}
+          | Char                                   {CharT}
           | '('type_exp')'                         {$2}
 
 
