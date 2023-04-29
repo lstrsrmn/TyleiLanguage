@@ -1,67 +1,80 @@
 {
 module Lexer where
-}
 
-%wrapper "basic"
+import Syntax
+       }
+
+%wrapper "monad"
 
 $digit = 0-9
 $alpha = [a-zA-Z]
 $capital = [A-Z]
 $stringChars = $printable # \"
-
 tokens :-
 
        "--".*          ;
        $white+         ;
-       \'\\n\'         {\_ -> TokTermChar '\n'}
-       \'$printable\'  {\(_:s:_) -> TokTermChar s}
-       \"$stringChars*\"{TokString . init . tail}
-       do              {\_ -> TokDo}
-       Nat             {\_ -> TokNat}
-       Char            {\_ -> TokChar}
-       =               {\_ -> TokEquals}
-       \+              {\_ -> TokPlus}
-       \-              {\_ -> TokMinus}
-       \*              {\_ -> TokTimes}
-       \:\:            {\_ -> TokType}
-       \(\)            {\_ -> TokUnit}
-       "->"            {\_ -> TokRightArrow}
-       "<-"            {\_ -> TokLeftArrow}
-       return          {\_ -> TokReturn}
-       \,              {\_ -> TokProduct}
-       forAll          {\_ -> TokForAll}
-       ind             {\_ -> TokInd}
-       \\              {\_ -> TokAbs}
-       \.              {\_ -> TokDot}
-       \|              {\_ -> TokCase}
-       \_              {\_ -> TokWildcard}
-       fst             {\_ -> TokFst}
-       snd             {\_ -> TokSnd}
-       \/\\            {\_ -> TokTypeAbs}
-       \@              {\_ -> TokAt}
-       fix             {\_ -> TokFix}
-       let             {\_ -> TokLet}
-       type            {\_ -> TokLetType}
-       in              {\_ -> TokIn}
-       matchChar       {\_ -> TokMatchChar}
-       with            {\_ -> TokWith}
-       iter            {\_ -> TokIter}
-       IO              {\_ -> TokIO}
-       print           {const TokPrint}
-       readFile        {const TokReadFile}
-       [A-Z] [$alpha]* {\s -> TokCons s}
-       $alpha+         {\s -> TokVar s}
-       $digit+         {\s -> TokInt (read s)}
-       \;              {\_ -> TokSemiColon}
-       \[              {\_ -> TokOpenSquareBracket}
-       \]              {\_ -> TokCloseSquareBracket}
-       \(              {\_ -> TokOpenBracket}
-       \)              {\_ -> TokCloseBracket}
-       \{              {\_ -> TokOpenCurlyBracket}
-       \}              {\_ -> TokCloseCurlyBracket}
+       \'\\n\'         {identifier (\s -> TokTermChar (((\_ -> '\n') . head . tail) <$> s))}
+       \'$printable\'  {identifier (\s -> TokTermChar ((head . tail) <$> s))}
+       \"$stringChars*\"{identifier (\s -> TokString  ((init . tail) <$> s))}
+       do              {tok TokDo}
+       Nat             {tok TokNat}
+       Char            {tok TokChar}
+       =               {tok TokEquals}
+       \+              {tok TokPlus}
+       \-              {tok TokMinus}
+       \*              {tok TokTimes}
+       \:\:            {tok TokType}
+       \(\)            {tok TokUnit}
+       "->"            {tok TokRightArrow}
+       "<-"            {tok TokLeftArrow}
+       return          {tok TokReturn}
+       \,              {tok TokProduct}
+       forAll          {tok TokForAll}
+       ind             {tok TokInd}
+       \\              {tok TokAbs}
+       \.              {tok TokDot}
+       \|              {tok TokCase}
+       \_              {tok TokWildcard}
+       fst             {tok TokFst}
+       snd             {tok TokSnd}
+       \/\\            {tok TokTypeAbs}
+       \@              {tok TokAt}
+       fix             {tok TokFix}
+       let             {tok TokLet}
+       type            {tok TokLetType}
+       in              {tok TokIn}
+       matchChar       {tok TokMatchChar}
+       with            {tok TokWith}
+       iter            {tok TokIter}
+       IO              {tok TokIO}
+       print           {tok TokPrint}
+       readFile        {tok TokReadFile}
+       [A-Z] [$alpha]* {identifier TokCons}
+       $alpha+         {identifier TokVar}
+       $digit+         {identifier (TokInt . (read <$>))}
+       \;              {tok TokSemiColon}
+       \[              {tok TokOpenSquareBracket}
+       \]              {tok TokCloseSquareBracket}
+       \(              {tok TokOpenBracket}
+       \)              {tok TokCloseBracket}
+       \{              {tok TokOpenCurlyBracket}
+       \}              {tok TokCloseCurlyBracket}
 
 
 {
+
+alexEOF :: Alex (Loc Token)
+alexEOF = pure (L (SL (0,0) (0,0)) TokEOF)
+
+tok :: Token -> AlexInput -> Int -> Alex (Loc Token)
+tok t ((AlexPn _ line col), _, _, _) ln = pure (L (SL (line, col) (line, col + ln)) t)
+
+identifier :: (Loc String -> Token) -> AlexInput -> Int -> Alex (Loc Token)
+identifier t ((AlexPn _ line col), _, _, inp) ln =
+           let
+              sl = SL (line, col) (line, col + ln)
+           in pure (L sl (t (L sl (take ln inp))))
 
 data Token
      = TokOpenSquareBracket
@@ -71,20 +84,20 @@ data Token
      | TokOpenCurlyBracket
      | TokCloseCurlyBracket
      | TokSemiColon
-     | TokString String
+     | TokString (Loc String)
      | TokPrint
      | TokReadFile
      | TokDo
      | TokNat
      | TokChar
-     | TokTermChar Char
+     | TokTermChar (Loc Char)
      | TokUnit
-     | TokVar String
-     | TokCons String
+     | TokVar (Loc String)
+     | TokCons (Loc String)
      | TokLeftArrow
      | TokRightArrow
      | TokReturn
-     | TokInt Int
+     | TokInt (Loc Int)
      | TokProduct
      | TokForAll
      | TokInd
@@ -110,5 +123,5 @@ data Token
      | TokMinus
      | TokTimes
      | TokType
-     deriving (Eq, Show)
+     | TokEOF
 }

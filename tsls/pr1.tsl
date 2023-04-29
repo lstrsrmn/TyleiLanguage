@@ -1,0 +1,1 @@
+print (StrCons ('a', StrNil ()) 

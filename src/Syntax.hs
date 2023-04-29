@@ -5,6 +5,18 @@ module Syntax where
 type Name = String
 type Binder = Maybe Name
 
+data SourceLocation = SL
+     { slStart :: (Int, Int)
+     , slEnd :: (Int, Int)
+     }
+instance Functor Loc where
+  fmap f (L ls a) = L ls (f a)
+
+data Loc a = L
+     { location :: SourceLocation
+     , syntax :: a
+     }
+
 data Type v
   = TVar v
   | Unit
@@ -21,42 +33,42 @@ data Type v
 data Raw
   = RVar Name
   | RStar -- ()
-  | RAbs Binder Raw -- \Name . Expr
-  | RApp Raw Raw -- a b
+  | RAbs Binder (Loc Raw) -- \Name . Expr
+  | RApp (Loc Raw) (Loc Raw) -- a b
   | RNum Int
-  | RAdd Raw Raw
-  | RMinus Raw Raw
-  | RTimes Raw Raw
+  | RAdd (Loc Raw) (Loc Raw)
+  | RMinus (Loc Raw) (Loc Raw)
+  | RTimes (Loc Raw) (Loc Raw)
   | RChar Char -- `a`
-  | RMatchChar (Type Name) Raw [(Maybe Char, Raw)]
+  | RMatchChar (Loc (Type Name)) (Loc Raw) [(Maybe Char, Loc Raw)]
   -- matchChar [type] expr with
   -- | 'a' -> ta
   -- | 'b' -> tb
   -- | ...
   -- | _ -> twildcard
-  | RIter (Type Name) Raw Raw Raw -- iter [A] ( n, t0, ts)
-  | RPair Raw Raw -- (a, b)
-  | RFst Raw -- fst a
-  | RSnd Raw -- snd a
-  | RTypeAbs Binder Raw -- /\ a . expr
-  | RTypeApp Raw (Type Name) -- expr @A
-  | RCons Name Raw -- | Name expr
-  | RFix Binder (Type Name) [(Name, Name, Raw)] -- fix f :: A
+  | RIter (Loc (Type Name)) (Loc Raw) (Loc Raw) (Loc Raw) -- iter [A] ( n, t0, ts)
+  | RPair (Loc Raw) (Loc Raw) -- (a, b)
+  | RFst (Loc Raw) -- fst a
+  | RSnd (Loc Raw) -- snd a
+  | RTypeAbs Binder (Loc Raw) -- /\ a . expr
+  | RTypeApp (Loc Raw) (Loc (Type Name)) -- expr @A
+  | RCons Name (Loc Raw) -- | Name expr
+  | RFix Binder (Loc (Type Name)) [(Loc Name, Binder, Loc Raw)] -- fix f :: A
   -- | Cons1 idk -> expr1
   -- | Cons2 idk -> expr2
-  | RBind Binder (Type Name) Raw Raw -- do {x :: A <- t; u}
-  | RReturn Raw -- return expr
-  | RPrint Raw -- print expr
+  | RBind Binder (Loc (Type Name)) (Loc Raw) (Loc Raw) -- do {x :: A <- t; u}
+  | RReturn (Loc Raw) -- return expr
+  | RPrint (Loc Raw) -- print expr
   | RReadFile String -- readFile fileName
-  | RLet Binder (Type Name) Raw Raw -- let x :: Type = e1 in e2
-  | RLetType Binder (Type Name) Raw -- let type x = Type in e
+  | RLet Binder (Loc (Type Name)) (Loc Raw) (Loc Raw) -- let x :: Type = e1 in e2
+  | RLetType Binder (Loc (Type Name)) (Loc Raw) -- let type x = Type in e
 
 newtype Ix = Ix Int
   deriving (Eq, Ord, Num, Show)
 
 
 data Term
-  = Var Ix 
+  = Var Ix
   | Star
   | Abs Binder Term
   | App Term Term
@@ -77,7 +89,7 @@ data Term
   | Return Term
   | Print Term
   | ReadFile String
-  | Fix Binder (Type Ix) [(Name, Name, Term)]
+  | Fix Binder (Type Ix) [(Name, Binder, Term)]
   | Let Binder (Type Ix) Term Term
   | LetType Binder (Type Ix) Term
   deriving (Show)
@@ -120,6 +132,19 @@ data VType
   | VIO VType
   | VCharT
 
+instance Show VType where
+  show (VTVar _) = "TypeVar"
+  show VUnit = "Unit"
+  show (VFunction a b) = show a ++ " -> " ++ show b
+  show VNat = "Nat"
+  show (VProduct a b) = "(" ++ show a ++", " ++ show b ++ ")"
+  show (VForAll (Just a) _) = show "forAll " ++ show a
+  show (VForAll Nothing _) = "forall _"
+  show (VInd (Just a) _) = "ind " ++ show a
+  show (VInd Nothing _) = "ind _"
+  show (VIO a) = "IO " ++ show a
+  show VCharT = "Char"
+
 type TypeEnv = [VType]
 
 data Val
@@ -144,7 +169,7 @@ data Val
   | VReturn Val
   | VPrint Val
   | VReadFile String
-  | VFix Binder VType [(Name, Name, Val -> Val -> Val)]
+  | VFix Binder VType [(Name, Binder, Val -> Val -> Val)]
 
 type Env = [Val]
 

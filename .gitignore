@@ -4,6 +4,7 @@
 !src/*
 !app/
 !app/*
+!tsls/
 !LICENCE
 !README.md
 !*.yaml

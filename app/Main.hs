@@ -5,37 +5,36 @@ import Eval
 import Syntax
 import TypeChecker
 import Control.Monad.Except
-import System.IO
+import Control.Monad.Reader
 import System.Environment
 
 instance ExecEnv IO where
-  runPrint = putStrLn
+  runPrint = putStr
   runReadFile = readFile
 
-stringModule :: String
-stringModule = "let type String = ind String with | StrNil () | StrCons (Char, String) in "
 
-test :: Raw -> IO ()
-test raw =
+test :: Loc Raw -> String -> IO ()
+test raw file =
   case runExcept (infer (Context [] [] [] 0) raw) of
-    Left a -> putStrLn a
-    Right (tm, ty) -> do
+    Left a -> putStrLn (a file)
+    Right (tm, _) -> do
       let vtm = eval [] [] tm
-      putStrLn "\nEvaluates to:\n"
-      print (quote 0 vtm)
-      putStrLn "\nRunning Program:\n"
-      utm <- run vtm
-      putStrLn "\nFinalResult\n"
-      print (quote 0 utm)
+      _ <- run vtm
+      pure ()
 
 runTest :: String -> IO ()
-runTest = test . parser . alexScanTokens . (stringModule++)
+runTest s = let
+  modules = concat [stringModule, tileModule]
+  file = modules ++ s
+  in case runAlex file (runReaderT parser file) of
+    Left e -> error e
+    Right rs -> test rs file
 
 runFromFile :: String -> IO ()
 runFromFile s = do
   a <- readFile s
   runTest a
-  
+
 main :: IO ()
 main = do
   (arg:_) <- getArgs
@@ -43,3 +42,27 @@ main = do
   putStrLn arg
   runFromFile arg
 
+stringModule :: String
+stringModule = "let type String = ind String with | StrNil () | StrCons (Char, String) in "
+tileModule :: String
+tileModule = "let type Bool = ind Bool with | True () | False () in \
+              \ let type Row = ind Row with | RowNil () | RowCons (Bool, Row) in \
+              \ let type Tile = ind Tile with | TileNil () | TileCons (Row, Tile) in \
+              \ let printBool :: (Bool -> IO ()) = fix printBool :: (Bool -> IO ()) \
+              \ | True _ -> print (StrCons ('1', StrNil ())) \
+              \ | False _ -> print (StrCons ('0', StrNil ())) \
+              \ in \
+              \ let printRow :: (Row -> IO ()) = fix printRow :: (Row -> IO ()) \
+              \ | RowCons r -> do {_ :: () <- printBool (fst r); do {_ :: () <- print (StrCons (' ', StrNil ())); printRow (snd r)}} \
+              \ | RowNil _ -> print (StrCons ('\\n', StrNil ())) \
+              \ in let printTile :: (Tile -> IO ()) = fix printTile :: (Tile -> IO ()) \
+              \ | TileCons t -> do {_ :: () <- printRow (fst t); printTile (snd t)} \
+              \ | TileNil _ -> print (StrCons ('\\n', StrNil ())) in \
+              \ let concatRow :: (Row -> (Row -> Row)) = fix concatRow :: (Row -> (Row -> Row)) \
+              \ | RowCons r -> (\\x. RowCons (fst r, (concatRow (snd r)) x)) \
+              \ | RowNil _ -> (\\x. x) \
+              \ in \
+              \ let concatTile :: (Tile -> (Tile -> Tile)) = fix concatTile :: (Tile -> (Tile -> Tile)) \
+              \ | TileCons t -> (\\x. TileCons (fst t, (concatTile (snd t)) x)) \
+              \ | TileNil _ -> (\\x. x) \
+              \ in \n"

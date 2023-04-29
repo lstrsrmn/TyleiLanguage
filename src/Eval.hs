@@ -5,7 +5,7 @@ import Syntax
 (VAbs _ t) $$ a = t a
 fix_f@(VFix _ _ bs) $$ cons@(VCons c u) =
   let
-    checkBranch :: [(Name, Name, Val -> Val -> Val)] -> Val
+    checkBranch :: [(Name, Binder, Val -> Val -> Val)] -> Val
     checkBranch ((ci, _, ti):bs)
       | ci == c = ti fix_f u
       | otherwise = checkBranch bs
@@ -83,7 +83,7 @@ eval env typeEnv (Print t) = VPrint (eval env typeEnv t)
 eval _ _ (ReadFile s) = VReadFile s
 eval env typeEnv (Fix x t bs) =
    let
-     evalBranch :: (Name, Name, Term) -> (Name, Name, Val -> Val -> Val)
+     evalBranch :: (Name, Binder, Term) -> (Name, Binder, Val -> Val -> Val)
      evalBranch (ci, xi, ti) = (ci, xi, \vx vs -> eval (env :> vx :> vs) typeEnv ti)
    in VFix x (evalType typeEnv t) (map evalBranch bs)
 eval env typeEnv (Let _ _ t u) =
@@ -152,7 +152,7 @@ quote lvl (VMinus t u) = Minus (quote lvl t) (quote lvl u)
 quote lvl (VTimes t u) = Times (quote lvl t) (quote lvl u)
 quote lvl (VFix x a bs) =
   let
-    quoteBranch :: (Name, Name, Val -> Val -> Val) -> (Name, Name, Term)
+    quoteBranch :: (Name, Binder, Val -> Val -> Val) -> (Name, Binder, Term)
     quoteBranch (x, y, f) = (x, y, quote (lvl+2) (f (VVar lvl) (VVar (lvl+1))))
   in Fix x (quoteType lvl a) (map quoteBranch bs)
 
@@ -171,6 +171,7 @@ run (VPrint t) = do
   where
     castToStr :: Val -> String
     castToStr (VCons "StrNil" _) = []
+    castToStr (VCons "StrCons" (VPair (VChar '\\') cs)) = '\n':castToStr cs
     castToStr (VCons "StrCons" (VPair (VChar c) cs)) = c:castToStr cs
     castToStr _ = error "Error: Blocked term."
 run (VReadFile s) = castToVal <$> runReadFile s
