@@ -24,7 +24,7 @@ test raw file =
 
 runTest :: String -> IO ()
 runTest s = let
-  modules = concat [stringModule, tileModule]
+  modules = "" -- concat [stringModule] --, tileModule]
   file = modules ++ s
   in case runAlex file (runReaderT parser file) of
     Left e -> error e
@@ -43,26 +43,26 @@ main = do
   runFromFile arg
 
 stringModule :: String
-stringModule = "let type String = ind String with | StrNil () | StrCons (Char, String) in "
+stringModule = "let type String :: Type = ind String with | StrNil () | StrCons (Char, String) in "
 tileModule :: String
 tileModule = "let type Bool = ind Bool with | True () | False () in \
-              \ let type Row = ind Row with | RowNil () | RowCons (Bool, Row) in \
-              \ let type Tile = ind Tile with | TileNil () | TileCons (Row, Tile) in \
+              \ let type Row = ind Row with | Nil () | Cons (Bool, Row) in \
+              \ let type Tile = ind Tile with | Nil () | Cons (Row, Tile) in \
               \ let printBool :: (Bool -> IO ()) = fix printBool :: (Bool -> IO ()) \
               \ | True _ -> print (StrCons ('1', StrNil ())) \
               \ | False _ -> print (StrCons ('0', StrNil ())) \
               \ in \
               \ let printRow :: (Row -> IO ()) = fix printRow :: (Row -> IO ()) \
-              \ | RowCons r -> do {_ :: () <- printBool (fst r); do {_ :: () <- print (StrCons (' ', StrNil ())); printRow (snd r)}} \
-              \ | RowNil _ -> print (StrCons ('\\n', StrNil ())) \
+              \ | Cons r -> do {_ :: () <- printBool (fst r); do {_ :: () <- print (StrCons (' ', StrNil ())); printRow (snd r)}} \
+              \ | Nil _ -> print (Cons ('\\n', StrNil ())) \
               \ in let printTile :: (Tile -> IO ()) = fix printTile :: (Tile -> IO ()) \
-              \ | TileCons t -> do {_ :: () <- printRow (fst t); printTile (snd t)} \
-              \ | TileNil _ -> print (StrCons ('\\n', StrNil ())) in \
+              \ | Cons t -> do {_ :: () <- printRow (fst t); printTile (snd t)} \
+              \ | Nil _ -> print (StrCons ('\\n', StrNil ())) in \
               \ let concatRow :: (Row -> (Row -> Row)) = fix concatRow :: (Row -> (Row -> Row)) \
-              \ | RowCons r -> (\\x. RowCons (fst r, (concatRow (snd r)) x)) \
-              \ | RowNil _ -> (\\x. x) \
+              \ | Cons r -> (\\x. Cons (fst r, (concatRow (snd r)) x)) \
+              \ | Nil _ -> (\\x. x) \
               \ in \
               \ let concatTile :: (Tile -> (Tile -> Tile)) = fix concatTile :: (Tile -> (Tile -> Tile)) \
-              \ | TileCons t -> (\\x. TileCons (fst t, (concatTile (snd t)) x)) \
-              \ | TileNil _ -> (\\x. x) \
+              \ | Cons t -> (\\x. COns (fst t, (concatTile (snd t)) x)) \
+              \ | Nil _ -> (\\x. x) \
               \ in \n"

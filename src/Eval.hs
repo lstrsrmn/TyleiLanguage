@@ -19,9 +19,15 @@ evalType env (Function a b) = VFunction (evalType env a) (evalType env b)
 evalType _ Nat = VNat
 evalType _ CharT = VCharT
 evalType env (Product a b) = VProduct (evalType env a) (evalType env b)
-evalType env (ForAll a b) = VForAll a (\va -> evalType (env :> va) b)
+evalType env (ForAll a k b) = VForAll a k (\va -> evalType (env :> va) b)
 evalType env (Ind t cs) = VInd t (map (\(c,b) -> (c, \vt -> evalType (env :> vt) b)) cs)
 evalType env (IO t) = VIO (evalType env t)
+evalType env (TypeLamAbs n (L ls a)) = VTypeLamAbs n (L ls (evalType env a))
+evalType env (TypeLamApp (L ls a) b) =
+  let
+    va = evalType env a
+    vb = evalType (env :> va) b
+  in VTypeLamApp (L ls va) vb
 
 eval :: Env -> TypeEnv -> Term -> Val
 eval env _ (Var (Ix x)) = env !! x
@@ -112,7 +118,7 @@ quoteType _ VUnit = Unit
 quoteType lvl (VFunction a b) = Function (quoteType lvl a) (quoteType lvl b)
 quoteType _ VNat = Nat
 quoteType lvl (VProduct a b) = Product (quoteType lvl a) (quoteType lvl b)
-quoteType lvl (VForAll x f) = ForAll x (quoteType (lvl+1) (f (VTVar lvl)))
+quoteType lvl (VForAll x k f) = ForAll x k (quoteType (lvl+1) (f (VTVar lvl)))
 quoteType lvl (VInd x bs) =
   let
     quoteBranch :: (Name, VType -> VType) -> (Name, Type Ix)
@@ -120,6 +126,8 @@ quoteType lvl (VInd x bs) =
   in Ind x (map quoteBranch bs)
 quoteType lvl (VIO a) = IO (quoteType lvl a)
 quoteType _ VCharT = CharT
+quoteType lvl (VTypeLamAbs n (L ls a)) = TypeLamAbs n (L ls (quoteType (lvl+1) a))
+quoteType lvl (VTypeLamApp (L ls a) b) = TypeLamApp (L ls (quoteType (lvl + 1) a)) (quoteType (lvl+1) b)
 
 quote :: Lvl -> Val -> Term
 quote (Lvl l) (VVar (Lvl x)) = Var (Ix (l - x - 1))

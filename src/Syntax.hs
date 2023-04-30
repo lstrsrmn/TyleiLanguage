@@ -9,6 +9,7 @@ data SourceLocation = SL
      { slStart :: (Int, Int)
      , slEnd :: (Int, Int)
      }
+  deriving Show
 instance Functor Loc where
   fmap f (L ls a) = L ls (f a)
 
@@ -16,6 +17,24 @@ data Loc a = L
      { location :: SourceLocation
      , syntax :: a
      }
+instance (Show a) => Show (Loc a) where
+  show (L _ a) = show a
+
+data Kind
+  = Type
+  | TypeFunction (Loc Kind) (Loc Kind)
+
+instance Show Kind where
+  show Type = "Type"
+  show (TypeFunction a b) = "(" ++ show a ++ " -> " ++ show b ++ ")"
+
+instance Eq Kind where
+  (==) Type Type = True
+  (==) (TypeFunction (L _ a) (L _ b)) (TypeFunction (L _ c) (L _ d)) = (a == c) && (b == d)
+  (==) _ _ = False
+
+(=>>) :: SourceLocation -> SourceLocation -> SourceLocation
+(=>>) (SL s _ ) (SL _ e) = SL s e
 
 data Type v
   = TVar v
@@ -23,8 +42,10 @@ data Type v
   | Function (Type v) (Type v)
   | Nat
   | Product (Type v) (Type v)
-  | ForAll Binder (Type v)
+  | ForAll Binder (Loc Kind) (Type v) -- forall f :: Kind . Type
   | Ind Binder [(Name, Type v)] -- ind name with
+  | TypeLamAbs Binder (Loc (Type v))
+  | TypeLamApp (Loc (Type v)) (Type v)
   -- | Cons Type
   | IO (Type v)
   | CharT
@@ -61,7 +82,7 @@ data Raw
   | RPrint (Loc Raw) -- print expr
   | RReadFile String -- readFile fileName
   | RLet Binder (Loc (Type Name)) (Loc Raw) (Loc Raw) -- let x :: Type = e1 in e2
-  | RLetType Binder (Loc (Type Name)) (Loc Raw) -- let type x = Type in e
+  | RLetType Binder (Loc Kind) (Loc (Type Name)) (Loc Raw) -- let type x :: Kind = Type in e
 
 newtype Ix = Ix Int
   deriving (Eq, Ord, Num, Show)
@@ -95,17 +116,17 @@ data Term
   deriving (Show)
 
 data Context = Context {
-    typeContext :: [Binder],
+    typeContext :: [(Binder, Kind)],
     termContext :: [(Binder, VType)],
     typeEnv :: TypeEnv,
-    typeLevel :: Lvl
+      typeLevel :: Lvl
   }
 
-typeDefine :: Context -> Binder -> VType -> Context
-typeDefine (Context tCtx ctx tEnv tLvl) n t = Context (tCtx :> n) ctx (tEnv :> t) (tLvl+1)
+typeDefine :: Context -> Binder -> VType -> Kind -> Context
+typeDefine (Context tCtx ctx tEnv tLvl) n t k = Context (tCtx :> (n, k)) ctx (tEnv :> t) (tLvl+1)
 
-typeBind :: Context -> Binder -> Context
-typeBind (Context tCtx ctx tEnv tLvl) n = Context (tCtx :> n) ctx (tEnv :> VTVar tLvl) (tLvl+1)
+typeBind :: Context -> Binder -> Kind -> Context
+typeBind (Context tCtx ctx tEnv tLvl) n k = Context (tCtx :> (n, k)) ctx (tEnv :> VTVar tLvl) (tLvl+1)
 
 -- For terms
 bind :: Context -> Binder -> VType -> Context
@@ -127,9 +148,11 @@ data VType
   | VFunction VType VType
   | VNat
   | VProduct VType VType
-  | VForAll Binder (VType -> VType)
+  | VForAll Binder (Loc Kind) (VType -> VType)
   | VInd Binder [(Name, VType -> VType)]
   | VIO VType
+  | VTypeLamAbs Binder (Loc VType)
+  | VTypeLamApp (Loc VType) VType
   | VCharT
 
 instance Show VType where
@@ -138,12 +161,14 @@ instance Show VType where
   show (VFunction a b) = show a ++ " -> " ++ show b
   show VNat = "Nat"
   show (VProduct a b) = "(" ++ show a ++", " ++ show b ++ ")"
-  show (VForAll (Just a) _) = show "forAll " ++ show a
-  show (VForAll Nothing _) = "forall _"
+  show (VForAll (Just a) _ _) = show "forAll " ++ show a
+  show (VForAll Nothing _ _) = "forall _"
   show (VInd (Just a) _) = "ind " ++ show a
   show (VInd Nothing _) = "ind _"
   show (VIO a) = "IO " ++ show a
   show VCharT = "Char"
+  show (VTypeLamAbs n a) = "\\" ++ show n ++ ". " ++ show a
+  show (VTypeLamApp a b) = show a ++ " " ++ show b
 
 type TypeEnv = [VType]
 

@@ -1,1 +1,4 @@
-print (StrCons ('a', StrNil ()) 
+let type Bool :: Type = ind Bool with | True () | False () in
+let type List :: Type -> Type = \A. ind List with | Nil () | Cons (A, List) in
+let type Row :: Type = List Bool in
+print (StrCons ('a', StrNil ()))

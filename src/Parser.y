@@ -24,7 +24,7 @@ import Data.List
        '+'             {L _ TokPlus}
        '-'             {L _ TokMinus}
        '*'             {L _ TokTimes}
-       '::'            {L _ TokType}
+       '::'            {L _ TokDoubleColon}
        '()'            {L _ TokUnit}
        '->'            {L _ TokRightArrow}
        '<-'            {L _ TokLeftArrow}
@@ -43,6 +43,7 @@ import Data.List
        fix             {L _ TokFix}
        let             {L _ TokLet}
        type            {L _ TokLetType}
+       Type            {L _ TokType}
        in              {L _ TokIn}
        matchChar       {L _ TokMatchChar}
        with            {L _ TokWith}
@@ -78,10 +79,11 @@ exp :: {Loc Raw}
     | fix binder '::' type_exp branches                     {rloc (RFix (syntax $2) $4 $5) $1 $4}
     | '\/\\' typeBinder '.' exp                             {rloc (RTypeAbs (syntax $2) $4) $1 $>}
     | do '{' binder '::' type_exp '<-' exp ';' exp'}'       {rloc (RBind (syntax $3) $5 $7 $9) $1 $>}
-    | let type typeBinder '=' type_exp in exp               {rloc (RLetType (syntax $3) $5 $7) $1 $>}
+    | let type typeBinder '::' kind_exp '=' type_exp in exp {rloc (RLetType (syntax $3) $5 $7 $9) $1 $>}
     | term                                                  {$1}
 
-term : term atom                                            {rloc (RApp $1 $2) $1 $>}
+term :: {Loc Raw}
+     : term atom                                            {rloc (RApp $1 $2) $1 $>}
      | term '\@' type_atom                                  {rloc (RTypeApp $1 $3) $1 $>}
      | fst atom                                             {rloc (RFst $2) $1 $>}
      | snd atom                                             {rloc (RSnd $2) $1 $>}
@@ -95,25 +97,38 @@ term : term atom                                            {rloc (RApp $1 $2) $
      | readFile String                                      {rloc (RReadFile (syntax $2)) $1 $>}
      | atom                                                 {$1}
 
-atom : '()'                                                 {rloc RStar $1 $>}
+atom :: {Loc Raw}
+     : '()'                                                 {rloc RStar $1 $>}
      | Var                                                  {rloc (RVar (syntax $1)) $1 $>}
      | Int                                                  {rloc (RNum (syntax $1)) $1 $>}
      | char                                                 {rloc (RChar (syntax $1)) $1 $>}
      | '('exp',' exp ')'                                    {rloc (RPair $2 $4) $1 $>}
      | '('exp')'                                            {$2}
 
-type_exp : ind typeBinder with constructors        {rloc (Ind (syntax $2) $4) $1 $3}
-         | type_atom '->' type_exp                 {rloc (Function (syntax $1) (syntax $3)) $1 $>}
-         | forAll typeBinder type_exp              {rloc (ForAll (syntax $2) (syntax $3)) $1 $>}
-         | IO type_atom                            {rloc (IO (syntax $2)) $1 $>}
-         | type_atom                               {$1}
+type_exp :: {Loc (Type Name)}
+         : ind typeBinder with constructors                 {rloc (Ind (syntax $2) $4) $1 $3}
+         | '\\' typeBinder '.' type_exp                     {rloc (TypeLamAbs (syntax $2) $4) $1 $>}
+         | type_exp type_atom                               {rloc (TypeLamApp $1 (syntax $2)) $1 $>}
+         | type_atom '->' type_exp                          {rloc (Function (syntax $1) (syntax $3)) $1 $>}
+         | forAll typeBinder  '::' kind_exp '.' type_exp    {rloc (ForAll (syntax $2) $4 (syntax $6)) $1 $>}
+         | IO type_atom                                     {rloc (IO (syntax $2)) $1 $>}
+         | type_atom                                        {$1}
 
-type_atom : '('type_exp','type_exp')'              {rloc (Product (syntax $2) (syntax $4)) $1 $>}
-          | '()'                                   {rloc Unit $1 $>}
-          | Nat                                    {rloc Nat $1 $>}
-          | Cons                                   {rloc (TVar (syntax $1)) $1 $>}
-          | Char                                   {rloc CharT $1 $>}
-          | '('type_exp')'                         {$2}
+type_atom :: {Loc (Type Name)}
+          : '('type_exp','type_exp')'                       {rloc (Product (syntax $2) (syntax $4)) $1 $>}
+          | '()'                                            {rloc Unit $1 $>}
+          | Nat                                             {rloc Nat $1 $>}
+          | Cons                                            {rloc (TVar (syntax $1)) $1 $>}
+          | Char                                            {rloc CharT $1 $>}
+          | '('type_exp')'                                  {$2}
+
+kind_exp :: {Loc Kind}
+         : kind_atom '->' kind_exp                          {rloc (TypeFunction $1 $3) $1 $>}
+         | kind_atom                                        {$1}
+
+kind_atom :: {Loc Kind}
+          : Type                                            {rloc Type $1 $>}
+          | '('kind_exp')'                                  {$2}
 
 
 
@@ -143,6 +158,7 @@ type LineNumber = Int
 decrLine :: String -> String
 decrLine ('\n':cs) = cs
 decrLine (c:cs) = decrLine cs
+decrLine [] = []
 
 getLn :: String -> String
 getLn ('\n':cs) = ['\n']

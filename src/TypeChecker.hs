@@ -1,11 +1,11 @@
 {-# LANGUAGE TupleSections #-}
 module TypeChecker where
 
-import Syntax
 import Eval
 import Control.Monad.Except
 import qualified Data.Map as Map
 import Parser
+import Syntax
 
 type Checker a = Except (String -> String) a
 
@@ -18,8 +18,18 @@ writeError sl s =
     search (SL (l1, c1) (l2, c2)) (_:cs) = search (SL (l1-1, c1) (l2-1, c2)) (decrLine cs)
     search _ [] = "unknown"
     grab :: SourceLocation -> String -> String
-    grab (SL (1, s) (1, e)) cs = getLn cs ++ replicate (s - 1) ' ' ++ replicate (e - s) '^'
+    grab (SL (_, s) (1, e)) cs = getLn cs ++ replicate (s - 1) ' ' ++ replicate (e - s) '^'
+    grab _ s = s
   in throwError (\f -> s ++ "\n" ++ search sl f)
+
+convKind' :: Kind -> Kind -> Checker ()
+convKind'  a a'
+  | a == a' = pure ()
+  | otherwise = throwError $ const ("Cannot convert kind " ++ show a ++ " into kind " ++ show a')
+convKind :: Loc Kind -> Loc Kind -> Checker ()
+convKind (L sl a) (L sl' a')
+  | a == a' = pure ()
+  | otherwise = writeError (sl =>> sl') ("Cannot convert kind " ++ show a ++ " into kind " ++ show a')
 
 -- both types must be well formed
 conv :: Lvl -> VType -> VType -> Checker ()
@@ -34,7 +44,8 @@ conv _ VNat VNat = pure ()
 conv lvl (VProduct a b) (VProduct a' b') = do
   conv lvl a a'
   conv lvl b b'
-conv lvl (VForAll _ b) (VForAll _ b') = do
+conv lvl (VForAll _ k b) (VForAll _  k' b') = do
+  convKind k k'
   conv (lvl + 1) (b (VTVar lvl)) (b' (VTVar lvl))
 conv lvl (VInd _ cs) (VInd _ cs') = do
   zipWithM_ convCons cs cs'
@@ -47,36 +58,62 @@ conv lvl (VIO a) (VIO a') = conv lvl a a'
 conv _ VCharT VCharT = pure ()
 conv _ a b = throwError $ const ("Failed to convert (" ++ show a ++ ") -> (" ++ show b ++").")
 
-checkTypeVar :: Context -> Name-> Checker Ix
+checkTypeVar :: Context -> Name -> Checker Ix
 checkTypeVar (Context [] _ _ _) n = throwError $ const ("Type variable [" ++ n ++ "] not in scope.")
-checkTypeVar (Context (theta :> Nothing) gamma x y) n = (+1) <$> checkTypeVar (Context theta gamma x y) n
-checkTypeVar (Context (theta :> (Just a)) gamma x y) n
-  | a == n = pure 0
+checkTypeVar (Context (theta :> (Nothing, _)) gamma x y) n = (+1) <$> checkTypeVar (Context theta gamma x y) n
+checkTypeVar (Context (theta :> (Just a, k)) gamma x y) n
+  | a == n = do
+      convKind' Type k
+      pure 0
   | otherwise = (+1) <$> checkTypeVar (Context theta gamma x y) n
-  
-checkType :: Context -> Type Name -> Checker (Type Ix)
-checkType theta (TVar n) = TVar <$> checkTypeVar theta n
-checkType _ Unit = pure Unit
-checkType theta (Function a b) = do
-  a <- checkType theta a
-  b <- checkType theta b
-  pure (Function a b)
-checkType _ Nat = pure Nat
-checkType theta (Product a b) = do
-  a <- checkType theta a
-  b <- checkType theta b
-  pure (Product
-        a b)
-checkType theta (ForAll a b) = do
-  b <- checkType (typeBind theta a) b
-  pure (ForAll a b)
-checkType theta (Ind t cs) = do
-  cs <- mapM (\(c, b) -> (c,) <$> checkType (typeBind theta t) b) cs
-  pure (Ind t cs)
-checkType theta (IO a) = do
-  a <- checkType theta a
-  pure (IO a)
-checkType _ CharT = pure CharT
+
+
+inferType :: Context -> Type Name -> Checker (Type Ix, Kind)
+inferType theta (TVar n) = (, Type) <$> (TVar <$> checkTypeVar theta n)
+inferType _ Unit = pure (Unit, Type)
+inferType theta (Function a b) = do
+  a <- checkType theta a Type
+  b <- checkType theta b Type
+  pure (Function a b, Type)
+inferType _ Nat = pure (Nat, Type)
+inferType theta (Product a b) = do
+  a <- checkType theta a Type
+  b <- checkType theta b Type
+  pure (Product a b, Type)
+inferType theta (ForAll a lk@(L _ k) b) = do
+  b <- checkType (typeBind theta a k) b Type
+  pure (ForAll a lk b, Type)
+inferType theta (Ind t cs) = do
+  cs <- mapM (\(c, b) -> (c,) . fst <$> inferType (typeBind theta t Type) b) cs
+  pure (Ind t cs, Type)
+inferType theta (TypeLamApp (L sl a) b) = do
+  (a, ka) <- inferType theta a
+  case ka of
+    TypeFunction (L _ t) (L _ u) -> do
+      b <- checkType theta b t
+      pure (TypeLamApp (L sl a) b, u)
+    _ -> writeError sl "No Type Lambda abstraction at "
+inferType theta (IO a) = do
+  a <- checkType theta a Type
+  pure (IO a, Type)
+inferType _ CharT = pure (CharT, Type)
+inferType _ n = throwError $ const ("Failed to infer type on " ++ show n)
+
+checkType :: Context -> Type Name -> Kind -> Checker (Type Ix)
+checkType theta (TVar a) k = do
+  case k of
+    Type -> TVar <$> checkTypeVar theta a
+    _ -> throwError $ const ("Check Type failed on " ++ a ++ " against " ++ show k)
+checkType theta (TypeLamAbs a (L sl b)) k = do
+  case k of
+    TypeFunction (L _ t) (L _ u) -> do
+      b <- checkType (typeBind theta a t) b u
+      pure (TypeLamAbs a (L sl b))
+    _ -> writeError sl ("Check Type failed on type lambda abstraction with Type Name " ++ show a)
+checkType theta a b = do
+  (a, ka) <- inferType theta a
+  convKind' ka b
+  pure a
 
 inferVar :: Context -> Loc Name -> Checker (Ix, VType)
 inferVar (Context _ [] _ _) (L sl n) = writeError sl ("Variable [" ++ n ++ "] not in scope at ")
@@ -104,7 +141,7 @@ infer ctx (L sl (RApp t u)) = do
       pure (App t u, b)
     _ -> writeError sl "Application head must have function type at "
 infer ctx (L _ (RIter c n t0 ts)) = do
-  c <- checkType ctx (syntax c)
+  c <- checkType ctx (syntax c) Type
   let vc = evalType (typeEnv ctx) c
   n <- check ctx n VNat
   t0 <- check ctx t0 vc
@@ -121,7 +158,7 @@ infer ctx (L sl (RSnd t)) = do
     VProduct _ b -> pure (Snd t, b)
     _ -> writeError sl "Snd projection must have Product type at "
 infer ctx (L sl (RFix f t bs)) = do
-  t <- checkType ctx (syntax t)
+  t <- checkType ctx (syntax t) Type
   let vt = evalType (typeEnv ctx) t
   case vt of
     VFunction i@(VInd _ cs) a ->
@@ -139,7 +176,7 @@ infer ctx (L sl (RFix f t bs)) = do
         pure (Fix f t bs, vt)
     _ -> writeError sl "Inductive Function has wrong structure at "
 infer ctx (L _ (RMatchChar a c cs)) = do
-  a <- checkType ctx (syntax a)
+  a <- checkType ctx (syntax a) Type
   let va = evalType (typeEnv ctx) a
   let
     checkBranch :: (Maybe Char, Loc Raw) -> Checker (Maybe Char, Term)
@@ -150,7 +187,7 @@ infer ctx (L _ (RMatchChar a c cs)) = do
   cs <- mapM checkBranch cs
   pure (MatchChar a c cs, va)
 infer ctx (L _ (RBind x a t u)) = do
-  a <- checkType ctx (syntax a)
+  a <- checkType ctx (syntax a) Type
   let va = evalType (typeEnv ctx) a
   t <- check ctx t (VIO va)
   (u, uType) <- infer (bind ctx x va) u
@@ -160,22 +197,22 @@ infer ctx (L _ (RPrint t)) = do
   pure (Print t, VIO VUnit)
 infer _ (L _ (RReadFile s)) = pure (ReadFile s, VIO vtypeString)
 infer ctx (L _ (RLet x a t u)) = do
-  a <- checkType ctx (syntax a)
+  a <- checkType ctx (syntax a) Type
   let va = evalType (typeEnv ctx) a
   t <- check ctx t va
   (u, uType) <- infer (bind ctx x va) u
   pure (Let x a t u, uType)
-infer ctx (L _ (RLetType t c r)) = do
-  c <- checkType ctx (syntax c)
+infer ctx (L _ (RLetType t (L _ k) c r)) = do
+  c <- checkType ctx (syntax c) k
   let vc = evalType (typeEnv ctx) c
-  (r, rType) <- infer (typeDefine ctx t vc) r
+  (r, rType) <- infer (typeDefine ctx t vc k) r
   pure (LetType t c r, rType)
 infer ctx (L sl (RTypeApp t u)) = do
-  u <- checkType ctx (syntax u)
+  u <- checkType ctx (syntax u) Type
   let vu = evalType (typeEnv ctx) u
   (t, tType) <- infer ctx t
   case tType of
-    VForAll _ b -> do
+    VForAll _ _ b -> do
       pure (TypeApp t u, b vu)
     _ -> writeError sl "Application head must have function type at "
 infer ctx (L _ (RAdd t u)) = do
@@ -200,9 +237,9 @@ check ctx (L _ (RPair t u)) (VProduct a b) = do
 check ctx (L _ (RAbs x t)) (VFunction a b) = do
   t <- check (bind ctx x a) t b
   pure (Abs x t)
-check ctx (L _ (RTypeAbs x t)) (VForAll _ b) = do
+check ctx (L _ (RTypeAbs x t)) (VForAll _ (L _ k) b) = do
   let va = VTVar (typeLevel ctx)
-  t <- check (typeBind ctx x) t (b va)
+  t <- check (typeBind ctx x k) t (b va)
   pure (TypeAbs x t)
 check ctx (L sl (RCons c t)) indF@(VInd _ bs) = do
   case Map.fromList bs Map.!? c of
@@ -211,7 +248,7 @@ check ctx (L sl (RCons c t)) indF@(VInd _ bs) = do
       pure (Cons c t)
     _ -> writeError sl ("Constructor " ++ c ++ " is not a constructor of the inductive type at ")
 check ctx (L _ (RBind x a t u)) (VIO b) = do
-  a <- checkType ctx (syntax a)
+  a <- checkType ctx (syntax a) Type
   let va = evalType (typeEnv ctx) a
   t <- check ctx t (VIO va)
   u <- check (bind ctx x va) u (VIO b)
@@ -220,15 +257,15 @@ check ctx (L _ (RReturn t)) (VIO a) = do
   t <- check ctx t a
   pure (Return t)
 check ctx (L _ (RLet x a t u)) b = do
-  a <- checkType ctx (syntax a)
+  a <- checkType ctx (syntax a) Type
   let va = evalType (typeEnv ctx) a
   t <- check ctx t va
   u <- check (bind ctx x va) u b
   pure (Let x a t u)
-check ctx (L _ (RLetType t c r)) b = do
-  c <- checkType ctx (syntax c)
+check ctx (L _ (RLetType t (L _ k) c r)) b = do
+  c <- checkType ctx (syntax c) k
   let vc = evalType (typeEnv ctx) c
-  r <- check (typeDefine ctx t vc) r b
+  r <- check (typeDefine ctx t vc k) r b
   pure (LetType t c r)
 check ctx ne ty = do
   (ne, neType) <- infer ctx ne

@@ -28,7 +28,6 @@ library
       Eval
       Lexer
       Parser
-      Print
       Syntax
       TypeChecker
   other-modules:
