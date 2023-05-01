@@ -75,7 +75,7 @@ import Data.List
 exp :: {Loc Raw}
     : '\\' binder '.' exp                                   {rloc (RAbs (syntax $2) $4) $1 $>}
     | let binder '::' type_exp '=' exp in exp               {rloc (RLet (syntax $2) $4 $6 $8) $1 $>}
-    | matchChar '['type_exp']' exp with cases               {rloc (RMatchChar $3 $5 $7) $1 $6}
+    | matchChar '::' type_atom exp with cases               {rloc (RMatchChar $3 $4 $6) $1 $5}
     | fix binder '::' type_exp branches                     {rloc (RFix (syntax $2) $4 $5) $1 $4}
     | '\/\\' typeBinder '.' exp                             {rloc (RTypeAbs (syntax $2) $4) $1 $>}
     | do '{' binder '::' type_exp '<-' exp ';' exp'}'       {rloc (RBind (syntax $3) $5 $7 $9) $1 $>}
@@ -89,7 +89,7 @@ term :: {Loc Raw}
      | snd atom                                             {rloc (RSnd $2) $1 $>}
      | Cons atom                                            {rloc (RCons (syntax $1) $2) $1 $>}
      | return atom                                          {rloc (RReturn $2) $1 $>}
-     | iter '['type_exp']' '('exp','exp','exp')'            {rloc (RIter $3 $6 $8 $10) $1 $>}
+     | iter '::' type_atom '('atom','atom','atom')'         {rloc (RIter $3 $5 $7 $9) $1 $>}
      | term '*' term                                        {rloc (RTimes $1 $3) $1 $>}
      | term '+' term                                        {rloc (RAdd $1 $3) $1 $>}
      | term '-' term                                        {rloc (RMinus $1 $3) $1 $>}
@@ -108,9 +108,12 @@ atom :: {Loc Raw}
 type_exp :: {Loc (Type Name)}
          : ind typeBinder with constructors                 {rloc (Ind (syntax $2) $4) $1 $3}
          | '\\' typeBinder '.' type_exp                     {rloc (TypeLamAbs (syntax $2) $4) $1 $>}
-         | type_exp type_atom                               {rloc (TypeLamApp $1 (syntax $2)) $1 $>}
-         | type_atom '->' type_exp                          {rloc (Function (syntax $1) (syntax $3)) $1 $>}
+         | type_app '->' type_exp                           {rloc (Function (syntax $1) (syntax $3)) $1 $>}
          | forAll typeBinder  '::' kind_exp '.' type_exp    {rloc (ForAll (syntax $2) $4 (syntax $6)) $1 $>}
+         | type_app                                         {$1}
+
+type_app :: {Loc (Type Name)}
+         : type_atom type_atom                              {rloc (TypeLamApp $1 (syntax $2)) $1 $>}
          | IO type_atom                                     {rloc (IO (syntax $2)) $1 $>}
          | type_atom                                        {$1}
 

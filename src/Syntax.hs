@@ -113,7 +113,37 @@ data Term
   | Fix Binder (Type Ix) [(Name, Binder, Term)]
   | Let Binder (Type Ix) Term Term
   | LetType Binder (Type Ix) Term
-  deriving (Show)
+
+instance Show Term where
+  show (Var i) = "Var " ++ show i
+  show Star = "()"
+  show (Abs (Just n) t) = "\\" ++ n ++ ". " ++ show t ++ "\n"
+  show (Abs Nothing t) = "\\_. " ++ show t ++ "\n"
+  show (App a b) = show a ++ " " ++ show b
+  show (Num i) = show i
+  show (Add a b) = show a ++ " + " ++ show b
+  show (Minus a b) = show a ++ " - " ++ show b
+  show (Times a b) = show a ++ " * " ++ show b
+  show (Char c) = [c]
+  show (MatchChar a t _) = "matchChar ::" ++ show a ++ " on " ++ show t ++ " with branches ... \n"
+  show (Iter a t1 t2 t3) = "iter :: " ++ show a ++ " " ++ show t1 ++ " " ++ show t2 ++ " " ++ show t3 ++ "\n"
+  show (Pair a b) = "(" ++ show a ++ "," ++ show b ++ ")"
+  show (Fst a) = "fst " ++ show a
+  show (Snd a) = "snd " ++ show a
+  show (TypeAbs n t) = "\\" ++ show n ++ ". " ++ show t ++ "\n"
+  show (TypeApp t u) = show t ++ " " ++ show u
+  show (Cons a t) = a ++ " " ++ show t
+  show (Bind (Just x) a t u) = "{do " ++ x ++ " :: " ++ show a ++ " <- " ++ show t ++ "; " ++ show u ++ "}\n"
+  show (Bind Nothing a t u) = "{do _  :: " ++ show a ++ " <- " ++ show t ++ "; " ++ show u ++ "}\n"
+  show (Return t) = "return " ++ show t
+  show (Print t) = "print " ++ show t
+  show (ReadFile s) = "readFile " ++ s
+  show (Fix (Just x) t _) = "fix " ++ x ++ " :: " ++ show t ++ " branches ...\n"
+  show (Fix Nothing t _) = "fix _ :: " ++ show t ++ " branches ...\n"
+  show (Let (Just x) a t u) = "let " ++ x ++ " :: " ++ show a ++ " = " ++ show t ++ " in " ++ show u ++ "\n"
+  show (Let Nothing a t u) = "let _ :: " ++ show a ++ " = " ++ show t ++ " in " ++ show u ++ "\n"
+  show (LetType (Just x) a u) = "let type " ++ x ++ " = " ++ show a ++ " in " ++ show u ++ "\n"
+  show (LetType Nothing a u) = "let type _ = " ++ show a ++ " in " ++ show u ++ "\n"
 
 data Context = Context {
     typeContext :: [(Binder, Kind)],
@@ -151,7 +181,7 @@ data VType
   | VForAll Binder (Loc Kind) (VType -> VType)
   | VInd Binder [(Name, VType -> VType)]
   | VIO VType
-  | VTypeLamAbs Binder (Loc VType)
+  | VTypeLamAbs Binder (Loc (VType -> VType))
   | VTypeLamApp (Loc VType) VType
   | VCharT
 
@@ -167,7 +197,7 @@ instance Show VType where
   show (VInd Nothing _) = "ind _"
   show (VIO a) = "IO " ++ show a
   show VCharT = "Char"
-  show (VTypeLamAbs n a) = "\\" ++ show n ++ ". " ++ show a
+  show (VTypeLamAbs n _) = "\\" ++ show n ++ ". "
   show (VTypeLamApp a b) = show a ++ " " ++ show b
 
 type TypeEnv = [VType]
@@ -199,4 +229,4 @@ data Val
 type Env = [Val]
 
 vtypeString :: VType
-vtypeString = VInd (Just "String") [("StrNil",  const VUnit), ("StrCons", VProduct VCharT)]
+vtypeString = VInd (Just "String") [("Nil",  const VUnit), ("Cons", VProduct VCharT)]

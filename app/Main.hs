@@ -1,3 +1,4 @@
+{-# LANGUAGE  QuasiQuotes #-}
 module Main (main) where
 import Lexer
 import Parser
@@ -7,6 +8,7 @@ import TypeChecker
 import Control.Monad.Except
 import Control.Monad.Reader
 import System.Environment
+import Text.RawString.QQ
 
 instance ExecEnv IO where
   runPrint = putStr
@@ -24,8 +26,9 @@ test raw file =
 
 runTest :: String -> IO ()
 runTest s = let
-  modules = "" -- concat [stringModule] --, tileModule]
-  file = modules ++ s
+  refactor '\n' = ' '
+  refactor c = c
+  file = (map refactor tileModule) ++ "\n" ++ s
   in case runAlex file (runReaderT parser file) of
     Left e -> error e
     Right rs -> test rs file
@@ -42,27 +45,140 @@ main = do
   putStrLn arg
   runFromFile arg
 
-stringModule :: String
-stringModule = "let type String :: Type = ind String with | StrNil () | StrCons (Char, String) in "
 tileModule :: String
-tileModule = "let type Bool = ind Bool with | True () | False () in \
-              \ let type Row = ind Row with | Nil () | Cons (Bool, Row) in \
-              \ let type Tile = ind Tile with | Nil () | Cons (Row, Tile) in \
-              \ let printBool :: (Bool -> IO ()) = fix printBool :: (Bool -> IO ()) \
-              \ | True _ -> print (StrCons ('1', StrNil ())) \
-              \ | False _ -> print (StrCons ('0', StrNil ())) \
-              \ in \
-              \ let printRow :: (Row -> IO ()) = fix printRow :: (Row -> IO ()) \
-              \ | Cons r -> do {_ :: () <- printBool (fst r); do {_ :: () <- print (StrCons (' ', StrNil ())); printRow (snd r)}} \
-              \ | Nil _ -> print (Cons ('\\n', StrNil ())) \
-              \ in let printTile :: (Tile -> IO ()) = fix printTile :: (Tile -> IO ()) \
-              \ | Cons t -> do {_ :: () <- printRow (fst t); printTile (snd t)} \
-              \ | Nil _ -> print (StrCons ('\\n', StrNil ())) in \
-              \ let concatRow :: (Row -> (Row -> Row)) = fix concatRow :: (Row -> (Row -> Row)) \
-              \ | Cons r -> (\\x. Cons (fst r, (concatRow (snd r)) x)) \
-              \ | Nil _ -> (\\x. x) \
-              \ in \
-              \ let concatTile :: (Tile -> (Tile -> Tile)) = fix concatTile :: (Tile -> (Tile -> Tile)) \
-              \ | Cons t -> (\\x. COns (fst t, (concatTile (snd t)) x)) \
-              \ | Nil _ -> (\\x. x) \
-              \ in \n"
+tileModule = [r|
+let type String :: Type = ind String with | Nil () | Cons (Char, String) in
+let type List :: Type -> Type = \A. ind List with | Nil () | Cons (A, List) in
+let type Bool :: Type = ind Bool with | True () | False () in
+let type Row :: Type = List Bool in
+let type Tile :: Type = List Row in
+let printBool :: (Bool -> IO ()) = fix printBool :: (Bool -> IO ())
+| True _ -> print (Cons ('1', Nil ()))
+| False _ -> print (Cons ('0', Nil ()))
+in
+let printRow :: (Row -> IO ()) = fix printRow :: (Row -> IO ())
+| Cons r -> do {_ :: () <- printBool (fst r); printRow (snd r)}
+| Nil _ -> print (Cons ('\n', Nil ()))
+in let printTile :: (Tile -> IO ()) = fix printTile :: (Tile -> IO ())
+| Cons t -> do {_ :: () <- printRow (fst t); printTile (snd t)}
+| Nil _ -> print (Cons ('\n', Nil ()))
+in
+let concat :: forall A :: Type . (List A -> (List A -> List A)) =
+/\A. fix concat :: (List A -> (List A -> List A))
+| Cons c -> (\x. Cons (fst c, (concat (snd c)) x))
+| Nil _ -> (\x .x)
+in
+let map :: forall A :: Type . forall B :: Type . ((A -> B) -> List A -> List B) =
+/\A. /\B. \f. fix map :: List A -> List B
+| Cons c -> Cons (f (fst c), map (snd c))
+| Nil _ -> Nil ()
+in
+let head :: forall A :: Type . List A -> A =
+/\A. fix head :: List A -> A
+| Cons c -> fst c
+in
+let tail :: forall A :: Type . List A -> List A =
+/\A. fix tail :: List A -> List A
+| Cons c -> snd c
+in
+let not :: Bool -> Bool =
+fix _ :: Bool -> Bool
+| True _ -> False ()
+| False _ -> True ()
+in
+let length :: forall A :: Type . List A -> Nat =
+/\A. fix length :: List A -> Nat
+| Cons a -> 1 + (length (snd a))
+| Nil _ -> 0
+in
+
+let first :: forall A ::Type . forall B :: Type . forall C :: Type . (A -> B) -> (A, C) -> (B, C) =
+/\A. /\B. /\C. \f. \pair. (f (fst pair), snd pair)
+in
+
+let transpose :: forall A :: Type . List (List A) -> List (List A) =
+/\A. fix transpose :: List (List A) -> List (List A)
+| Cons c ->
+  let li :: List (List A) = Cons (fst c, snd c)
+  in Cons (map @(List A) @A (head @A) li, transpose (map @(List A) @(List A) (tail @A) li))
+| Nil _ -> Nil () in
+
+let if :: forall A :: Type . Bool -> A -> A -> A =
+    /\A. \b. \t. \f.
+    let f :: Bool -> A =
+        fix _ :: Bool -> A
+        | True _ -> t
+        | False _ -> f
+    in f b
+in
+let isEmpty :: forall A :: Type . List A -> Bool =
+/\A. fix _ :: List A -> Bool
+     | Cons a -> False ()
+     | Nil _ -> True ()
+in
+let emptyLeft :: forall A :: Type . forall B :: Type . (List A, List B) -> Bool =
+/\A. /\B. \x. isEmpty @A (fst x)
+in
+let emptyRight :: forall A :: Type . forall B :: Type . (List A, List B) -> Bool =
+/\A. /\B. \x. isEmpty @B (snd x)
+in
+let parseFile :: String -> Tile =
+\inp.
+    let parseChar :: (Char -> Row -> Row) = \c. matchChar :: (Row -> Row) c with
+    | '0' -> (\x. Cons( False (), x))
+    | '1' -> (\x. Cons( True (), x))
+    | '\n' -> (\_ . Nil ())
+    in
+    let parseRow :: String -> Row =
+    fix parseRow :: String -> Row
+    | Cons a -> parseChar (fst a) (parseRow (snd a))
+    | Nil _ -> Nil ()
+    in
+    let split :: String -> (String, String) =
+        let isNL :: Char -> Bool =
+            \c. matchChar :: Bool c with
+            | '\n' -> True ()
+            | _ -> False ()
+        in
+        fix split :: String -> (String, String)
+        | Cons a -> if @(String, String) (isNL (fst a)) (Nil (), snd a) (
+                       let result :: (String, String) = split (snd a) in
+                       (Cons (fst a, fst result), snd result)
+                    )
+        | Nil _ -> (Nil (), Nil ())
+    in
+        let splitRows :: String -> List String =
+        fix splitRows :: String -> List String
+        | Cons a ->
+                    let str :: String = Cons (fst a, snd a) in
+                    let splt :: (String, String) = split str in
+                    if @(List String) (emptyRight @Char @Char splt) (Cons (fst splt, Nil ()))
+                          (Cons (fst splt, splitRows (snd splt)))
+        | Nil _ -> Nil ()
+        in
+        map @String @Row parseRow (splitRows inp)
+in
+let scale :: forall A :: Type . Nat -> List A -> List A =
+/\A. \scaleFactor.
+     fix scaleUp :: List A -> List A
+     | Cons a -> iter :: (List A) ( scaleFactor , (scaleUp (snd a)) , (\x. Cons (fst a, x)) )
+     | Nil _ -> Nil ()
+in
+let transpose :: forall A :: Type . List (List A) -> List (List A) =
+    /\A. fix transpose :: List (List A) -> List (List A)
+         | Cons a -> if @(List (List A)) (isEmpty @A (fst a)) (Nil ())
+                        (let li :: List (List A) = Cons (fst a, snd a) in
+                         Cons (map @(List A) @A (head @A) li,
+                               transpose (map @(List A) @(List A) (tail @A) li))
+                        )
+         | Nil _ -> Nil ()
+in
+let reverse :: forall A :: Type . List A -> List A =
+/\A. fix reverse :: List A -> List A
+     | Cons a -> concat @A (reverse (snd a)) (Cons (fst a, Nil ()))
+     | Nil _ -> Nil ()
+in
+let rotate90 :: forall A :: Type . List (List A) -> List (List A) =
+    /\A. \li. transpose @A (reverse @(List A) li)
+in
+|]

@@ -59,6 +59,7 @@ executables:
     dependencies:
     - tylei
     - mtl
+    - raw-strings-qq
 
 tests:
   tylei-test:

@@ -4,7 +4,9 @@
 !src/*
 !app/
 !app/*
-!tsls/
+!test/
+!test/*
+!CHANGELOG.md
 !LICENCE
 !README.md
 !*.yaml

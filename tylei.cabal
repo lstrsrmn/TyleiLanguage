@@ -58,6 +58,7 @@ executable tylei-exe
       base >=4.7 && <5
     , containers
     , mtl
+    , raw-strings-qq
     , tylei
   default-language: Haskell2010
 

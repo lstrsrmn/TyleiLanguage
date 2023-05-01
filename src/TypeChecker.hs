@@ -6,11 +6,15 @@ import Control.Monad.Except
 import qualified Data.Map as Map
 import Parser
 import Syntax
+import Control.Arrow (first)
 
 type Checker a = Except (String -> String) a
 
+addToSL :: SourceLocation -> Int -> SourceLocation
+addToSL (SL (l1, c1) (l2, c2)) i = SL (l1, c1+i) (l2, c2+i)
+
 writeError :: SourceLocation -> String -> Checker a
-writeError sl s =
+writeError sl@(SL (line, _) _) s =
   let
     search :: SourceLocation -> String -> String
     search sl@(SL (1, _) _) cs =  grab sl cs
@@ -20,7 +24,7 @@ writeError sl s =
     grab :: SourceLocation -> String -> String
     grab (SL (_, s) (1, e)) cs = getLn cs ++ replicate (s - 1) ' ' ++ replicate (e - s) '^'
     grab _ s = s
-  in throwError (\f -> s ++ "\n" ++ search sl f)
+  in throwError (\f -> s ++ "\n" ++ show (line-1) ++ ":" ++ search (addToSL sl (1 + length (show line))) f)
 
 convKind' :: Kind -> Kind -> Checker ()
 convKind'  a a'
@@ -32,44 +36,42 @@ convKind (L sl a) (L sl' a')
   | otherwise = writeError (sl =>> sl') ("Cannot convert kind " ++ show a ++ " into kind " ++ show a')
 
 -- both types must be well formed
-conv :: Lvl -> VType -> VType -> Checker ()
-conv _ (VTVar n) (VTVar n')
+conv :: Lvl -> VType -> VType -> SourceLocation -> Checker ()
+conv _ (VTVar n) (VTVar n') sl
   | n == n' = pure ()
-  | otherwise = throwError $ const ("Cannot convert [" ++ show n ++ "] to [" ++ show n' ++ "].")
-conv _ VUnit VUnit = pure ()
-conv lvl (VFunction a b) (VFunction a' b') = do
-  conv lvl a a'
-  conv lvl b b'
-conv _ VNat VNat = pure ()
-conv lvl (VProduct a b) (VProduct a' b') = do
-  conv lvl a a'
-  conv lvl b b'
-conv lvl (VForAll _ k b) (VForAll _  k' b') = do
+  | otherwise = writeError sl ("Cannot convert [" ++ show n ++ "] to [" ++ show n' ++ "].")
+conv _ VUnit VUnit _ = pure ()
+conv lvl (VFunction a b) (VFunction a' b') sl = do
+  conv lvl a a' sl
+  conv lvl b b' sl
+conv _ VNat VNat _ = pure ()
+conv lvl (VProduct a b) (VProduct a' b') sl = do
+  conv lvl a a' sl
+  conv lvl b b' sl
+conv lvl (VForAll _ k b) (VForAll _  k' b') sl = do
   convKind k k'
-  conv (lvl + 1) (b (VTVar lvl)) (b' (VTVar lvl))
-conv lvl (VInd _ cs) (VInd _ cs') = do
+  conv (lvl + 1) (b (VTVar lvl)) (b' (VTVar lvl)) sl
+conv lvl (VInd _ cs) (VInd _ cs') sl = do
   zipWithM_ convCons cs cs'
   where
     convCons :: (Name, VType -> VType) -> (Name, VType -> VType) -> Checker ()
     convCons (c, b) (c', b')
-      | c == c' = conv (lvl + 1) (b (VTVar lvl)) (b' (VTVar lvl))
-      | otherwise = throwError $ const ("Cannot convert constructors [" ++ c ++ "] and [" ++ c' ++ "].")
-conv lvl (VIO a) (VIO a') = conv lvl a a'
-conv _ VCharT VCharT = pure ()
-conv _ a b = throwError $ const ("Failed to convert (" ++ show a ++ ") -> (" ++ show b ++").")
+      | c == c' = conv (lvl + 1) (b (VTVar lvl)) (b' (VTVar lvl)) sl
+      | otherwise = writeError sl ("Cannot convert constructors [" ++ c ++ "] and [" ++ c' ++ "].")
+conv lvl (VIO a) (VIO a') sl = conv lvl a a' sl
+conv _ VCharT VCharT _ = pure ()
+conv _ a b sl = writeError sl ("Failed to convert (" ++ show a ++ ") to (" ++ show b ++").")
 
-checkTypeVar :: Context -> Name -> Checker Ix
-checkTypeVar (Context [] _ _ _) n = throwError $ const ("Type variable [" ++ n ++ "] not in scope.")
-checkTypeVar (Context (theta :> (Nothing, _)) gamma x y) n = (+1) <$> checkTypeVar (Context theta gamma x y) n
-checkTypeVar (Context (theta :> (Just a, k)) gamma x y) n
+inferTypeVar :: Context -> Name -> Checker (Ix, Kind)
+inferTypeVar (Context [] _ _ _) n = throwError $ const ("Type variable [" ++ n ++ "] not in scope.")
+inferTypeVar (Context (theta :> (Nothing, _)) gamma x y) n = first (+1) <$> inferTypeVar (Context theta gamma x y) n
+inferTypeVar (Context (theta :> (Just a, k)) gamma x y) n
   | a == n = do
-      convKind' Type k
-      pure 0
-  | otherwise = (+1) <$> checkTypeVar (Context theta gamma x y) n
-
+      pure (0, k)
+  | otherwise = first (+1) <$> inferTypeVar (Context theta gamma x y) n
 
 inferType :: Context -> Type Name -> Checker (Type Ix, Kind)
-inferType theta (TVar n) = (, Type) <$> (TVar <$> checkTypeVar theta n)
+inferType theta (TVar n) = first TVar <$> inferTypeVar theta n
 inferType _ Unit = pure (Unit, Type)
 inferType theta (Function a b) = do
   a <- checkType theta a Type
@@ -100,10 +102,6 @@ inferType _ CharT = pure (CharT, Type)
 inferType _ n = throwError $ const ("Failed to infer type on " ++ show n)
 
 checkType :: Context -> Type Name -> Kind -> Checker (Type Ix)
-checkType theta (TVar a) k = do
-  case k of
-    Type -> TVar <$> checkTypeVar theta a
-    _ -> throwError $ const ("Check Type failed on " ++ a ++ " against " ++ show k)
 checkType theta (TypeLamAbs a (L sl b)) k = do
   case k of
     TypeFunction (L _ t) (L _ u) -> do
@@ -267,9 +265,9 @@ check ctx (L _ (RLetType t (L _ k) c r)) b = do
   let vc = evalType (typeEnv ctx) c
   r <- check (typeDefine ctx t vc k) r b
   pure (LetType t c r)
-check ctx ne ty = do
+check ctx ne@(L sl _) ty = do
   (ne, neType) <- infer ctx ne
-  conv (typeLevel ctx) neType ty
+  conv (typeLevel ctx) neType ty sl
   pure ne
 
 --check ctx t a = do

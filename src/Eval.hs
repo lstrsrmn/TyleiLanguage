@@ -22,12 +22,14 @@ evalType env (Product a b) = VProduct (evalType env a) (evalType env b)
 evalType env (ForAll a k b) = VForAll a k (\va -> evalType (env :> va) b)
 evalType env (Ind t cs) = VInd t (map (\(c,b) -> (c, \vt -> evalType (env :> vt) b)) cs)
 evalType env (IO t) = VIO (evalType env t)
-evalType env (TypeLamAbs n (L ls a)) = VTypeLamAbs n (L ls (evalType env a))
+evalType env (TypeLamAbs n (L ls a)) = VTypeLamAbs n (L ls (\vb -> evalType (env :> vb) a))
 evalType env (TypeLamApp (L ls a) b) =
   let
     va = evalType env a
-    vb = evalType (env :> va) b
-  in VTypeLamApp (L ls va) vb
+    vb = evalType env b
+  in case va of
+    VTypeLamAbs _ (L _ f) -> f vb
+    _ -> VTypeLamApp (L ls va) vb
 
 eval :: Env -> TypeEnv -> Term -> Val
 eval env _ (Var (Ix x)) = env !! x
@@ -126,7 +128,7 @@ quoteType lvl (VInd x bs) =
   in Ind x (map quoteBranch bs)
 quoteType lvl (VIO a) = IO (quoteType lvl a)
 quoteType _ VCharT = CharT
-quoteType lvl (VTypeLamAbs n (L ls a)) = TypeLamAbs n (L ls (quoteType (lvl+1) a))
+quoteType lvl (VTypeLamAbs n (L ls f)) = TypeLamAbs n (L ls (quoteType (lvl+1) (f (VTVar lvl))))
 quoteType lvl (VTypeLamApp (L ls a) b) = TypeLamApp (L ls (quoteType (lvl + 1) a)) (quoteType (lvl+1) b)
 
 quote :: Lvl -> Val -> Term
@@ -178,17 +180,17 @@ run (VPrint t) = do
   pure VStar
   where
     castToStr :: Val -> String
-    castToStr (VCons "StrNil" _) = []
-    castToStr (VCons "StrCons" (VPair (VChar '\\') cs)) = '\n':castToStr cs
-    castToStr (VCons "StrCons" (VPair (VChar c) cs)) = c:castToStr cs
+    castToStr (VCons "Nil" _) = []
+    castToStr (VCons "Cons" (VPair (VChar '\\') cs)) = '\n':castToStr cs
+    castToStr (VCons "Cons" (VPair (VChar c) cs)) = c:castToStr cs
     castToStr _ = error "Error: Blocked term."
 run (VReadFile s) = castToVal <$> runReadFile s
   where
     castToVal :: String -> Val
-    castToVal [] = VCons "StrNil" VStar
-    castToVal (c:cs) = VCons "StrCons" (VPair (VChar c) (castToVal cs))
+    castToVal [] = VCons "Nil" VStar
+    castToVal (c:cs) = VCons "Cons" (VPair (VChar c) (castToVal cs))
 run (VReturn t) = pure t
 run (VBind _ _ t u) = do
   vt <- run t
   run (u vt)
-run _ = error "Error: Blocked term."
+run v = error ("Error: Blocked term " ++ show (quote 0 v))
