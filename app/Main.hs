@@ -203,10 +203,22 @@ in
 let append :: forall A :: Type . List A -> A -> List A =
     /\A. \li. \t. concat @A li (Cons (t, Nil ()))
 in
-let subList :: forall A :: Type . Nat -> List A -> List A =
-   /\A. \n. \l. snd (iter :: (List A, List A) (n, (l, Nil ()), (\x. (tail @A (fst x), append @A (snd x) (head @A (fst x))))))
+let subList :: forall A :: Type . Nat -> Nat -> List A -> List A =
+   /\A. \start. \size. \l.
+        let nl :: List A = iter :: (List A) (start, l, (\x. tail @A x)) in
+        snd (iter :: (List A, List A) (size, (nl, Nil ()), (\x. (tail @A (fst x), append @A (snd x) (head @A (fst x))))))
 in
-let subMat :: forall A :: Type . Nat -> Nat -> List (List A) -> List (List A) =
-/\A. \n1. \n2. \m. subList @(List A) n2 (map @(List A) @(List A) (subList @A n1) m)
+let subMat :: forall A :: Type . Nat -> Nat -> Nat -> List (List A) -> List (List A) =
+/\A. \cStart. \rStart. \size. \m.
+        let nm :: List (List A) = iter :: (List (List A)) (rStart, m, (\x. tail @(List A) x)) in
+        snd (iter :: (List (List A), List (List A))
+        (size, (nm, Nil ()),
+               (\x. (tail @(List A) (fst x),
+                     append @(List A) (snd x) (subList @A cStart size (head @(List A) (fst x))))
+               )
+        ))
+in
+let addNTimes :: forall A :: Type . Nat -> List (List A) -> List (List A) =
+/\A. \n. \li. iter :: (List (List A)) (n, (Nil ()), (\x. add @A x li))
 in
 |]
