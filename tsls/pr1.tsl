@@ -1,1 +1,1 @@
-print (readFile "tsls/tile1.tl")
+print (Cons ('a', Nil ()))

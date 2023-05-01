@@ -96,13 +96,6 @@ let first :: forall A ::Type . forall B :: Type . forall C :: Type . (A -> B) ->
 /\A. /\B. /\C. \f. \pair. (f (fst pair), snd pair)
 in
 
-let transpose :: forall A :: Type . List (List A) -> List (List A) =
-/\A. fix transpose :: List (List A) -> List (List A)
-| Cons c ->
-  let li :: List (List A) = Cons (fst c, snd c)
-  in Cons (map @(List A) @A (head @A) li, transpose (map @(List A) @(List A) (tail @A) li))
-| Nil _ -> Nil () in
-
 let if :: forall A :: Type . Bool -> A -> A -> A =
     /\A. \b. \t. \f.
     let f :: Bool -> A =
@@ -180,5 +173,40 @@ let reverse :: forall A :: Type . List A -> List A =
 in
 let rotate90 :: forall A :: Type . List (List A) -> List (List A) =
     /\A. \li. transpose @A (reverse @(List A) li)
+in
+let reflectV :: forall A :: Type . List (List A) -> List (List A) =
+/\A. \li. map @(List A) @(List A) (reverse @A) li
+in
+let reflectH :: forall A :: Type . List (List A) -> List (List A) =
+/\A. \li. transpose @A (map @(List A) @(List A) (reverse @A) (transpose @A li))
+in
+let add :: forall A :: Type . List (List A) -> List (List A) -> List (List A) =
+/\A. \t1. \t2.
+     let addRecurse :: List (List A) -> List (List A) -> List (List A) =
+         fix addRecurse :: List (List A) -> List (List A) -> List (List A)
+             | Cons a -> \x. Cons (concat @A (fst a) (head @(List A) x), addRecurse (snd a) (tail @(List A) x))
+             | Nil _ -> \x. x
+     in addRecurse t1 t2
+in
+let and :: Bool -> Bool -> Bool =
+    \b1. \b2. if @Bool b1 (if @Bool b2 (True ()) (False ())) (False ())
+in
+let or :: Bool -> Bool -> Bool =
+    \b1. \b2. if @Bool b1 (True ()) (if @Bool b2 (True ()) (False ()))
+in
+let listOp :: forall A :: Type . (A -> A -> A) -> List A -> List A -> List A =
+/\A. \f.
+       fix listOp :: List A -> List A -> List A
+       | Cons a -> \x. Cons (f (fst a) (head @A x), listOp (snd a) (tail @A x))
+       | Nil _ -> \x. x
+in
+let append :: forall A :: Type . List A -> A -> List A =
+    /\A. \li. \t. concat @A li (Cons (t, Nil ()))
+in
+let subList :: forall A :: Type . Nat -> List A -> List A =
+   /\A. \n. \l. snd (iter :: (List A, List A) (n, (l, Nil ()), (\x. (tail @A (fst x), append @A (snd x) (head @A (fst x))))))
+in
+let subMat :: forall A :: Type . Nat -> Nat -> List (List A) -> List (List A) =
+/\A. \n1. \n2. \m. subList @(List A) n2 (map @(List A) @(List A) (subList @A n1) m)
 in
 |]
