@@ -12,3 +12,4 @@
 !*.yaml
 !*.cabal
 !.gitignore
+!*.pdf
